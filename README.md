@@ -1,2 +1,2 @@
 # E-Nose
-Collaboration project with UNSW and ADFA
+Collaboration project with UNSW ADFA
