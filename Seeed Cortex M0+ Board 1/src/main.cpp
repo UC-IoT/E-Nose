@@ -125,23 +125,23 @@ void setup() {
 void loop() {
   // ANALOG 
   TGS2600Read();
-  delay(500);
+  // delay(500);
   TGS2602Read();
-  delay(500);
+  // delay(500);
   TGS2603Read();
-  delay(500);
+  // delay(500);
   MQ2Read();
-  delay(500);
+  // delay(500);
 
   // I2C
   MultichannelGasSensorRead();
-  delay(500);
+  // delay(500);
 
   SGP30Read();
-  delay(500);
+  // delay(500);
 
   BME688Read();
-  delay(500);
+  // delay(500);
 
   FormaldehydeRead(sensor);
 
