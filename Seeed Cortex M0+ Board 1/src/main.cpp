@@ -96,57 +96,7 @@ static int16_t error;
     }
 }
 
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  
-  // Initiate MutichannelGasSensor
-  delay(1000);
-  gas.begin(Wire, 0x08); // use the hardware I2C
 
-  // Initiate SGP30
-  delay(1000);
-  SGP30Setup();
-
-  // Initiate BME688
-  delay(1000);
-  BME688Setup();
-
-  // Initiate Formaldehyde
-  delay(1000);
-  FormaldehydeSetup();  
-
-  Serial.println("All sensors initiated successfully!");
-  Serial.println("Starting to read data...");
-  delay(1000);
-
-}
-
-void loop() {
-  // ANALOG 
-  TGS2600Read();
-  // delay(500);
-  TGS2602Read();
-  // delay(500);
-  TGS2603Read();
-  // delay(500);
-  MQ2Read();
-  // delay(500);
-
-  // I2C
-  MultichannelGasSensorRead();
-  // delay(500);
-
-  SGP30Read();
-  // delay(500);
-
-  BME688Read();
-  // delay(500);
-
-  FormaldehydeRead(sensor);
-
-  delay(1000);
-}
 
 void MultichannelGasSensorRead(){
     uint8_t len = 0;
@@ -324,3 +274,56 @@ void MQ2Read(){
     Serial.print(sensor_volt);
     Serial.println("V");
 }
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  
+  // Initiate MutichannelGasSensor
+  delay(1000);
+  gas.begin(Wire, 0x08); // use the hardware I2C
+
+  // Initiate SGP30
+  delay(1000);
+  SGP30Setup();
+
+  // Initiate BME688
+  delay(1000);
+  BME688Setup();
+
+  // Initiate Formaldehyde
+  delay(1000);
+  FormaldehydeSetup();  
+
+  Serial.println("All sensors initiated successfully!");
+  Serial.println("Starting to read data...");
+  delay(1000);
+
+}
+
+void loop() {
+  // ANALOG 
+  TGS2600Read();
+  // delay(500);
+  TGS2602Read();
+  // delay(500);
+  TGS2603Read();
+  // delay(500);
+  MQ2Read();
+  // delay(500);
+
+  // I2C
+  MultichannelGasSensorRead();
+  // delay(500);
+
+  SGP30Read();
+  // delay(500);
+
+  BME688Read();
+  // delay(500);
+
+  FormaldehydeRead(sensor);
+
+  delay(1000);
+}
+
