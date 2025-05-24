@@ -1,17 +1,19 @@
 #include <Arduino.h>
 #include <Wire.h>
+
+// Sensors' libraries
 #include "seeed_bme680.h"
 #include <SensirionI2CSgp41.h>
 
-
+// Protocol
 #define IIC_ADDR  uint8_t(0x76)
 Seeed_BME680 bme680(IIC_ADDR);
 SensirionI2CSgp41 sgp41;
 
 void BME680Setup(){
-  Serial.println("Initiating BME688...");
+  Serial.println("Initiating BME680...");
   while (!bme680.init()) {
-        Serial.println("BME688 init failed! Can't find device!");
+        Serial.println("BME680 init failed! Can't find device!");
         delay(10000);
     }
   Serial.println("BME680 init success!");
@@ -63,34 +65,6 @@ void SGP41Setup(){
     }
 }
 
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-
-  // Initiate MutichannelGasSensor
-  delay(1000);
-  BME680Setup();
-
-  // Initiate SGP30
-  delay(1000);
-  SGP41Setup();  
-
-  Serial.println("All sensors initiated successfully!");
-  Serial.println("Starting to read data...");
-  delay(1000);
-}
-
-void loop() {
-  SGP41Read();
-  BME680Read();
-  TGS2610Read();
-  TGS2611Read();
-  TGS2612Read();
-  MQ9bRead();
-  delay(1000);
-
-}
-
 
 void TGS2610Read(){
   float sensor_volt;
@@ -128,7 +102,7 @@ void TGS2612Read(){
     Serial.println("V");
 }
 
-void MQ9bRead(){
+void MQ9_bRead(){
 
   float sensor_volt;
     float sensorValue;
@@ -210,4 +184,32 @@ void SGP41Read(){
         Serial.print("SRAW_NOx:");
         Serial.println(srawNox);
     }
+}
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+
+  // Initiate MutichannelGasSensor
+  delay(1000);
+  BME680Setup();
+
+  // Initiate SGP30
+  delay(1000);
+  SGP41Setup();  
+
+  Serial.println("All sensors initiated successfully!");
+  Serial.println("Starting to read data...");
+  delay(1000);
+}
+
+void loop() {
+
+  TGS2610Read();
+  TGS2611Read();
+  TGS2612Read();
+  MQ9_bRead();
+  BME680Read();
+  delay(1000);
+
 }
