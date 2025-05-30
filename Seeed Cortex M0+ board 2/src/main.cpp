@@ -73,7 +73,7 @@ void TGS2610Read(){
     sensorValue = analogRead(A0);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("sensor_volt = ");
+    Serial.print("TGS2610 = ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
@@ -85,7 +85,7 @@ void TGS2611Read(){
     sensorValue = analogRead(A1);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("sensor_volt = ");
+    Serial.print("TGS2611 = ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
@@ -97,7 +97,7 @@ void TGS2612Read(){
     sensorValue = analogRead(A2);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("sensor_volt = ");
+    Serial.print("TGS2612 = ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
@@ -110,7 +110,7 @@ void MQ9_bRead(){
     sensorValue = analogRead(A1);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("sensor_volt = ");
+    Serial.print("MQ9_b = ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
