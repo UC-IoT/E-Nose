@@ -1,8 +1,8 @@
-# Seeeduino Cortex M0+ Board 2
+# Board 2 - Seeed Crypto (ATmega4809 ECC608)
 
 This module consists of various of sensors for detecting gases. 
 
-The board that read the sensors is [Seeed Cortex M0+](https://wiki.seeedstudio.com/Seeeduino-Cortex-M0/) with [Base Shield V2](https://wiki.seeedstudio.com/Base_Shield_V2/) to connect more sensors. 
+The board that read the sensors is [Seeed Crypto (ATmega4809 ECC608)](https://wiki.seeedstudio.com/Seeeduino-Crypto-ATmega4809-ECC608/) with [Base Shield V2](https://wiki.seeedstudio.com/Base_Shield_V2/) to connect more sensors. 
 
 In this board it consists of 8 sensors:
 - [Grove Multichannel Gas Sensor v2](https://wiki.seeedstudio.com/Grove-Multichannel-Gas-Sensor-V2/)
