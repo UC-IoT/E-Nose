@@ -103,29 +103,35 @@ void MultichannelGasSensorRead(){
     uint8_t addr = 0;
     uint8_t i;
     uint32_t val = 0;
-
-    val = gas.getGM102B(); Serial.print("GM102B (NO2): "); 
+    Serial.println("Reading Multichannel Gas Sensor...");
+    val = gas.getGM102B(); 
+    Serial.println("GM102B (NO2): "); 
     Serial.print(val); 
-    Serial.print("  =  ");
+    Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
-    Serial.println("V");
+    Serial.print(" V");
+    Serial.println();
     val = gas.getGM302B(); 
-    Serial.print("GM302B (C2H5CH): "); 
+    Serial.println("GM302B (C2H5CH): "); 
     Serial.print(val); 
-    Serial.print("  =  ");
+    Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
-    Serial.println("V");
+    Serial.print(" V");
+    Serial.println();
     val = gas.getGM502B(); 
     Serial.print("GM502B (VOC): "); 
-    Serial.print(val); Serial.print("  =  ");
+    Serial.print(val); 
+    Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
-    Serial.println("V");
+    Serial.print("V");
+    Serial.println();
     val = gas.getGM702B(); 
     Serial.print("GM702B (CO): "); 
     Serial.print(val); 
-    Serial.print("  =  ");
+    Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
-    Serial.println("V");
+    Serial.print("V");
+    Serial.println();
 
 }
 
@@ -133,23 +139,23 @@ void SGP30Read(){
     s16 err = 0;
     u16 tvoc_ppb, co2_eq_ppm;
     float voltage;
+    Serial.println("Reading SGP30...");
     err = sgp_measure_iaq_blocking_read(&tvoc_ppb, &co2_eq_ppm);
     if (err == STATUS_OK) {
-        Serial.print("tVOC  Concentration:");
+        Serial.print("tVOC: ");
         Serial.print(tvoc_ppb);
-        Serial.println("ppb");
-        Serial.print("tVOC voltage:");
+        Serial.print(" ppb : ");
         voltage = map(tvoc_ppb, 0, 60000, 0, 3300) / 1000.0;
         Serial.print(voltage);
-        Serial.println("V");
+        Serial.print(" V");
+        Serial.println();
 
-        Serial.print("CO2eq Concentration:");
+        Serial.print("CO2eq:");
         Serial.print(co2_eq_ppm);
-        Serial.println("ppm");
-        Serial.print("CO2eq voltage:");
+        Serial.print("ppm : "); 
         voltage = map(co2_eq_ppm, 400, 60000, 0, 3300) / 1000.0;
         Serial.print(voltage);
-        Serial.println("V");
+        Serial.print(" V");
         Serial.println();
     } else {
         Serial.println("error reading IAQ values\n");
@@ -161,35 +167,38 @@ void BME688Read(){
         Serial.println("Failed to perform reading :(");
         return;
     }
-    Serial.print("temperature ===>> ");
+    Serial.println("Reading BME688...");
+    Serial.print("temperature: ");
     Serial.print(bme688.sensor_result_value.temperature);
-    Serial.println(" C");
-    Serial.print("temperature (voltage) ===>> ");
+    Serial.print(" °C");
+    Serial.print(" : ");
     float voltage = map(bme688.sensor_result_value.temperature, -40, 85, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.print(" V");
+    Serial.println();
 
-    Serial.print("pressure ===>> ");
+    Serial.print("pressure : ");
     Serial.print(bme688.sensor_result_value.pressure / 1000.0);
-    Serial.println(" KPa");
-    Serial.print("pressure (voltage) ===>> ");
+    Serial.print(" KPa");
+    Serial.print(" : ");
     voltage = map(bme688.sensor_result_value.pressure, 30000, 110000, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.print(" V");
+    Serial.println();
 
-    Serial.print("humidity ===>> ");
+    Serial.print("humidity : ");
     Serial.print(bme688.sensor_result_value.humidity);
-    Serial.println(" %");
-    Serial.print("humidity (voltage) ===>> ");
+    Serial.print(" %");
+    Serial.print(" : ");
     voltage = map(bme688.sensor_result_value.humidity, 0, 100, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
-
-    Serial.print("gas ===>> ");
-    Serial.print(bme688.sensor_result_value.gas / 1000.0);
-    Serial.println(" Kohms");
-
+    Serial.print("V");
     Serial.println();
+
+    Serial.print("gas : ");
+    Serial.print(bme688.sensor_result_value.gas / 1000.0);
+    Serial.print(" Kohms");
+
     Serial.println();
 }
 
@@ -204,26 +213,29 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
         Serial.print("Error trying to execute readMeasuredValues(): ");
         return;
     }
+    Serial.println("Reading Formaldehyde...");
     Serial.print("hcho: ");
     Serial.print(hcho / 5.0);
-    Serial.println("hcho (voltage): ");
+    Serial.print(" ppb : ");
     float voltage = map(hcho, 0, 10000, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
-    Serial.print("\t");
+    Serial.print(" V");
+    Serial.println();
+
     Serial.print("humidity: ");
     Serial.print(humidity / 100.0);
-    Serial.println("Humidity (voltage): ");
+    Serial.print(" % : ");
     voltage = map(humidity, 0, 100, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
-    Serial.print("\t");
+    Serial.print(" V");
+    Serial.println();
+
     Serial.print("temperature: ");
     Serial.print(temperature / 200.0);
-    Serial.println("Temperature (voltage): ");
+    Serial.print(" °C : ");
     voltage = map(temperature, -20, 50, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.print(" V");
     Serial.println();
 }
 
@@ -234,9 +246,9 @@ void TGS2600Read(){
     sensorValue = analogRead(A0);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2600 = ");
+    Serial.print("TGS2600: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void TGS2602Read(){
@@ -246,9 +258,9 @@ void TGS2602Read(){
     sensorValue = analogRead(A1);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2602 = ");
+    Serial.print("TGS2602: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void TGS2603Read(){
@@ -258,9 +270,9 @@ void TGS2603Read(){
     sensorValue = analogRead(A2);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2603 = ");
+    Serial.print("TGS2603: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void MQ2Read(){
@@ -270,7 +282,7 @@ void MQ2Read(){
     sensorValue = analogRead(A3);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("MQ2 = ");
+    Serial.print("MQ2: ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
