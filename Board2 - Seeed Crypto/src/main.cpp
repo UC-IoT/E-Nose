@@ -20,6 +20,7 @@ void BME680Setup(){
 }
 
 void SGP41Setup(){
+  Serial.println("Initiating SGP41...");
   while (!Serial) {
         delay(100);
     }
@@ -73,9 +74,9 @@ void TGS2610Read(){
     sensorValue = analogRead(A0);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2610 = ");
+    Serial.print("TGS2610: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void TGS2611Read(){
@@ -85,7 +86,7 @@ void TGS2611Read(){
     sensorValue = analogRead(A1);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2611 = ");
+    Serial.print("TGS2611: ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
@@ -110,9 +111,9 @@ void MQ9_bRead(){
     sensorValue = analogRead(A1);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("MQ9_b = ");
+    Serial.print("MQ9_b: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void BME680Read(){
@@ -120,35 +121,35 @@ void BME680Read(){
         Serial.println("Failed to perform reading :(");
         return;
     }
-    Serial.print("temperature ===>> ");
+    Serial.print("Reading BME680...");
+    Serial.print("temperature: ");
     Serial.print(bme680.sensor_result_value.temperature);
-    Serial.println(" C");
-    Serial.print("temperature (voltage) ===>> ");
+    Serial.print(" °C : ");
     float voltage = map(bme680.sensor_result_value.temperature, -40, 85, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.println(" V");
 
-    Serial.print("pressure ===>> ");
+    Serial.print("pressure: ");
     Serial.print(bme680.sensor_result_value.pressure / 1000.0);
-    Serial.println(" KPa");
-    Serial.print("pressure (voltage) ===>> ");
+    Serial.print(" KPa : ");
     voltage = map(bme680.sensor_result_value.pressure, 30000, 110000, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.println(" V");
 
-    Serial.print("humidity ===>> ");
+    Serial.print("humidity: ");
     Serial.print(bme680.sensor_result_value.humidity);
-    Serial.println(" %");
-    Serial.print("humidity (voltage) ===>> ");
+    Serial.print(" % :");
     voltage = map(bme680.sensor_result_value.humidity, 0, 100, 0, 3300) / 1000.0;
     Serial.print(voltage);
-    Serial.println("V");
+    Serial.println(" V");
 
-    Serial.print("gas ===>> ");
+    Serial.print("gas: ");
     Serial.print(bme680.sensor_result_value.gas / 1000.0);
-    Serial.println(" Kohms");
+    Serial.print(" Kohms : ");
+    voltage = 0;
+    Serial.print(voltage);
+    Serial.println(" V");
 
-    Serial.println();
     Serial.println();
 }
 
@@ -180,9 +181,9 @@ void SGP41Read(){
     } else {
         Serial.print("SRAW_VOC:");
         Serial.print(srawVoc);
-        Serial.print("\t");
+        Serial.println();
         Serial.print("SRAW_NOx:");
-        Serial.println(srawNox);
+        Serial.print(srawNox);
     }
 }
 
