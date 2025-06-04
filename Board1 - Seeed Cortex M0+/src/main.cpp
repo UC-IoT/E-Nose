@@ -196,7 +196,8 @@ void BME688Read(){
     Serial.println();
 
     Serial.print("gas : ");
-    Serial.print(bme688.sensor_result_value.gas / 1000.0);
+    gas_r = bme688.sensor_result_value.gas / 1000.0;
+    Serial.print(gas_r);
     Serial.print(" Kohms");
 
     Serial.println();
