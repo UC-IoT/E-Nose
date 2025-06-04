@@ -105,14 +105,14 @@ void MultichannelGasSensorRead(){
     uint32_t val = 0;
     Serial.println("Reading Multichannel Gas Sensor...");
     val = gas.getGM102B(); 
-    Serial.println("GM102B (NO2): "); 
+    Serial.print("GM102B (NO2): "); 
     Serial.print(val); 
     Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
     Serial.print(" V");
     Serial.println();
     val = gas.getGM302B(); 
-    Serial.println("GM302B (C2H5CH): "); 
+    Serial.print("GM302B (C2H5CH): "); 
     Serial.print(val); 
     Serial.print(" ppm : ");
     Serial.print(gas.calcVol(val)); 
@@ -314,6 +314,7 @@ void setup() {
 }
 
 void loop() {
+  Serial.println("New Data");
   // ANALOG 
   TGS2600Read();
   // delay(500);
@@ -335,7 +336,8 @@ void loop() {
   // delay(500);
 
   FormaldehydeRead(sensor);
-
+  Serial.println();
+  Serial.println();
   delay(1000);
 }
 

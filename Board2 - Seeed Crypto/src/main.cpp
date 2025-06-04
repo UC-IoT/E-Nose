@@ -149,8 +149,6 @@ void BME680Read(){
     voltage = 0;
     Serial.print(voltage);
     Serial.println(" V");
-
-    Serial.println();
 }
 
 void SGP41Read(){
@@ -206,13 +204,15 @@ void setup() {
 }
 
 void loop() {
-
+  Serial.println("New Data");
   TGS2610Read();
   TGS2611Read();
   TGS2612Read();
   MQ9_bRead();
   BME680Read();
   SGP41Read();
+  Serial.println();
+  Serial.println();
   delay(1000);
 
 }
