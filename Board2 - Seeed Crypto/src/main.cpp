@@ -121,7 +121,7 @@ void BME680Read(){
         Serial.println("Failed to perform reading :(");
         return;
     }
-    Serial.print("Reading BME680...");
+    Serial.println("Reading BME680...");
     Serial.print("temperature: ");
     Serial.print(bme680.sensor_result_value.temperature);
     Serial.print(" °C : ");
@@ -154,6 +154,7 @@ void BME680Read(){
 }
 
 void SGP41Read(){
+  Serial.println("Reading SGP41...");
   uint16_t conditioning_s = 10;
 
   uint16_t error;
@@ -211,6 +212,7 @@ void loop() {
   TGS2612Read();
   MQ9_bRead();
   BME680Read();
+  SGP41Read();
   delay(1000);
 
 }
