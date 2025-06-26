@@ -5,7 +5,7 @@ import time
 import msvcrt  
 
 # === Serial Configuration ===
-serial_port = "COM3"  
+serial_port = "COM3" #COM number that the board is connected to 
 baud_rate = 9600
 
 # === User Input ===
