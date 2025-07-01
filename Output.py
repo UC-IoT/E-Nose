@@ -1,18 +1,33 @@
-# CSV_Output
-
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import serial
 import time
 import msvcrt
 import os
 import re
 
-# === Serial Configuration ===
-serial_port = "COM3"
+# === User Inputs for Board and Serial Port ===
+while True:
+    board_input = input("Enter the board number (e.g., 1 for B1): ").strip()
+    if board_input in ["1", "2"]:
+        board_number = f"B{board_input}"
+        break
+    else:
+        print("Invalid input. Please enter 1 or 2.")
+while True:
+    try:
+        port_number = int(input("Enter the COM port number (e.g., 3 for COM3): ").strip())
+        if port_number > 0:
+            serial_port = f"COM{port_number}"
+            break
+        else:
+            print("Please enter a valid COM port number greater than 0.")
+    except ValueError:
+        print("Invalid input. Please enter a numeric value.")
+
 baud_rate = 9600
 
-# === User Inputs ===
+# === Folder and Substance Inputs ===
 folder_name = input("Enter the folder name depending on the test (Experiment, Deployment, Testing): ").strip().title()
 substance = input("Enter the substance being tested: ").strip().title()
 
@@ -34,7 +49,7 @@ session_serial = f"{session_count:04d}"
 
 # === Session ID and timestamp ===
 timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-session_id = f"{folder_prefix}{substance}{session_serial}_{timestamp}"
+session_id = f"{board_number}{folder_prefix}{substance}{session_serial}_{timestamp}"
 
 # === Flowrate Input ===
 while True:
@@ -47,8 +62,32 @@ while True:
     except ValueError:
         print("Invalid input. Please enter a numeric value.")
 
-num_data = int(input("Enter the number of data sets to capture: "))
-interval = float(input("Enter interval between readings (in seconds): "))
+# === Duration & Interval Inputs ===
+while True:
+    try:
+        duration_minutes = float(input("Enter duration of capture (in minutes): ").strip())
+        if duration_minutes > 0:
+            break
+        else:
+            print("Please enter a positive duration.")
+    except ValueError:
+        print("Invalid input. Please enter a numeric value.")
+
+while True:
+    try:
+        interval = float(input("Enter interval between readings (in seconds): ").strip())
+        if interval > 0:
+            break
+        else:
+            print("Interval must be greater than 0.")
+    except ValueError:
+        print("Invalid input. Please enter a numeric value.")
+
+start_time = datetime.now()
+end_time = start_time + timedelta(minutes=duration_minutes)
+
+print(f"\nStarting data capture for {duration_minutes} minutes every {interval} seconds...")
+print("Press 'x' at any time to cancel.\n")
 
 # === CSV Output File ===
 filename = os.path.join(full_folder_path, f"{session_id}.csv")
@@ -57,11 +96,7 @@ filename = os.path.join(full_folder_path, f"{session_id}.csv")
 ser = serial.Serial(serial_port, baud_rate, timeout=2)
 time.sleep(2)
 
-print(f"\nStarting data capture for {num_data} sets every {interval} seconds...")
-print("Press 'x' at any time to cancel.\n")
-
 data_sets = []
-data_count = 0
 capturing = False
 current_data = {}
 current_group = ""
@@ -74,7 +109,7 @@ def extract_numeric(val):
     return re.sub(r"[^\d\.]+", "", val)
 
 try:
-    while data_count < num_data:
+    while datetime.now() < end_time:
         if msvcrt.kbhit():
             key = msvcrt.getwch()
             if key.lower() == 'x':
@@ -92,8 +127,7 @@ try:
                 current_data["Timestamp"] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                 current_data["Flowrate (L/min)"] = flow_rate
                 data_sets.append(current_data)
-                print(f"Captured ({data_count + 1}/{num_data}):", current_data)
-                data_count += 1
+                print(f"Captured ({len(data_sets)}):", current_data)
                 current_data = {}
                 time.sleep(interval)
             capturing = True
@@ -128,7 +162,17 @@ try:
 
         elif len(parts) == 2:
             key, val = parts
-            current_data[f"{current_group} - {clean_text(key)}"] = clean_text(val)
+            key_clean = clean_text(key)
+            val_clean = clean_text(val)
+
+            if val_clean.endswith("V"):
+                try:
+                    numeric_val = float(val_clean.replace("V", "").strip())
+                    current_data[f"{current_group} - {key_clean} (V)"] = numeric_val
+                except ValueError:
+                    current_data[f"{current_group} - {key_clean}"] = val_clean
+            else:
+                current_data[f"{current_group} - {key_clean}"] = val_clean
 
 except Exception as e:
     print(f"\nError occurred: {e}")
@@ -163,7 +207,7 @@ save_summary = input("\nDo you want to save a summary for this session? (y/n): "
 if save_summary == 'y':
     date_str = datetime.now().strftime("%d-%m-%Y")
     time_str = datetime.now().strftime("%H:%M:%S")
-    total_duration = round(num_data * interval)
+    total_duration = round(duration_minutes * 60)
     minutes, seconds = divmod(total_duration, 60)
     duration_string = f"{minutes} minutes" if seconds == 0 else f"{minutes} minutes and {seconds} seconds" if minutes > 0 else f"{seconds} seconds"
 
@@ -172,9 +216,11 @@ if save_summary == 'y':
     print("\nEnter any notes for this session (optional). Press Enter if none:")
     user_notes = input("> ").strip()
 
+    board_num_only = board_number[-1] 
     summary_lines = [
         f"Date:        {date_str}",
         f"Time:        {time_str}",
+        f"Board Number: {board_num_only}",
         f"Substance:   {substance}",
         f"Flowrate:    {flow_rate} L/min",
         f"Duration:    {duration_string}",
