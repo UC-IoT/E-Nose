@@ -98,9 +98,9 @@ void TGS2612Read(){
     sensorValue = analogRead(A2);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2612 = ");
+    Serial.print("TGS2612: ");
     Serial.print(sensor_volt);
-    Serial.println("V");
+    Serial.println(" V");
 }
 
 void MQ9_bRead(){
@@ -146,7 +146,9 @@ void BME680Read(){
     Serial.print("gas: ");
     Serial.print(bme680.sensor_result_value.gas / 1000.0);
     Serial.print(" Kohms : ");
-    voltage = 0;
+    // Convert to voltage, using 2.1E-6 as "average consumption" factor 
+    // check https://www.bosch-sensortec.com/products/environmental-sensors/gas-sensors/bme680/
+    voltage = bme680.sensor_result_value.gas * 2.1E-6; 
     Serial.print(voltage);
     Serial.println(" V");
 }

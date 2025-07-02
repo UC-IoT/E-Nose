@@ -197,8 +197,13 @@ void BME688Read(){
 
     Serial.print("gas : ");
     gas_r = bme688.sensor_result_value.gas / 1000.0;
+    // Convert to voltage, using 2.1E-6 as "average consumption" factor 
+    // check https://www.bosch-sensortec.com/products/environmental-sensors/gas-sensors/bme688/
+    voltage = bme688.sensor_result_value.gas * 2.1E-6; 
     Serial.print(gas_r);
-    Serial.print(" Kohms");
+    Serial.print(" Kohms : ");
+    Serial.print(voltage);
+    Serial.print(" V");
 
     Serial.println();
 }
@@ -216,7 +221,7 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
     }
     Serial.println("Reading Formaldehyde...");
     Serial.print("hcho: ");
-    Serial.print(hcho / 5.0);
+    Serial.print(hcho);
     Serial.print(" ppb : ");
     float voltage = map(hcho, 0, 10000, 0, 3300) / 1000.0;
     Serial.print(voltage);
@@ -224,7 +229,7 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
     Serial.println();
 
     Serial.print("humidity: ");
-    Serial.print(humidity / 100.0);
+    Serial.print(humidity);
     Serial.print(" % : ");
     voltage = map(humidity, 0, 100, 0, 3300) / 1000.0;
     Serial.print(voltage);
@@ -232,7 +237,7 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
     Serial.println();
 
     Serial.print("temperature: ");
-    Serial.print(temperature / 200.0);
+    Serial.print(temperature);
     Serial.print(" °C : ");
     voltage = map(temperature, -20, 50, 0, 3300) / 1000.0;
     Serial.print(voltage);
