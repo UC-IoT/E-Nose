@@ -178,10 +178,10 @@ void SGP41Read(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     } else {
-        Serial.print("SRAW_VOC:");
+        Serial.print("SRAW_VOC : ");
         Serial.print(srawVoc);
         Serial.println();
-        Serial.print("SRAW_NOx:");
+        Serial.print("SRAW_NOx : ");
         Serial.print(srawNox);
     }
 }
@@ -213,6 +213,6 @@ void loop() {
   SGP41Read();
   Serial.println();
   Serial.println();
-  delay(1000);
+  delay(500);
 
 }
