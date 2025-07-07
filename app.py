@@ -8,7 +8,7 @@ import data_capture
 import read_plot
 
 
-# ───────────── shared navigation bar ─────────────
+# ───────────── navigation bar ─────────────
 def nav():
     return html.Div(
         [
@@ -20,7 +20,7 @@ def nav():
     )
 
 
-# ───────────── simple home page ─────────────
+# ─────────────  home page ─────────────
 def home():
     return html.Div(
         [
@@ -43,23 +43,21 @@ def create_app():
     app = Dash(__name__, suppress_callback_exceptions=True)
     app.title = "eNose Dashboard"
 
-    # basic page container
     app.layout = html.Div([dcc.Location(id="url"), html.Div(id="page")])
 
-    # router
     @app.callback(Output("page", "children"), Input("url", "pathname"))
     def display_page(pathname):
         if pathname == "/write":
-            return data_capture.layout(nav)           # page A
+            return data_capture.layout(nav)           
         elif pathname == "/read":
-            return read_plot.layout(nav)              # page B
+            return read_plot.layout(nav)              
         return home()
 
-    # register callback bundles from the two helper modules
+   
     data_capture.register_callbacks(app)
     read_plot.register_callbacks(app)
 
-    # make Dash happy at launch → include every component id
+
     app.validation_layout = html.Div(
         [
             dcc.Location(id="url"),
@@ -71,9 +69,6 @@ def create_app():
     return app
 
 
-# ───────────── main ─────────────
-# app.py  – entry‑point  (last lines only)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true")
@@ -81,7 +76,6 @@ if __name__ == "__main__":
 
     app = create_app()
 
-    # open browser in a separate thread after short delay
     def open_browser():
         webbrowser.open("http://127.0.0.1:8050")
 

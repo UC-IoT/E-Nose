@@ -196,7 +196,7 @@ void BME688Read(){
     Serial.println();
 
     Serial.print("gas : ");
-    gas_r = bme688.sensor_result_value.gas / 1000.0;
+    float gas_r = bme688.sensor_result_value.gas / 1000.0;
     Serial.print(gas_r);
     Serial.print(" Kohms");
 
@@ -224,7 +224,7 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
     Serial.println();
 
     Serial.print("humidity: ");
-    Serial.print(humidity / 100.0);
+    Serial.print(humidity);
     Serial.print(" % : ");
     voltage = map(humidity, 0, 100, 0, 3300) / 1000.0;
     Serial.print(voltage);
@@ -232,7 +232,7 @@ void FormaldehydeRead(SensirionI2cSfa3x& sensor){
     Serial.println();
 
     Serial.print("temperature: ");
-    Serial.print(temperature / 200.0);
+    Serial.print(temperature);
     Serial.print(" °C : ");
     voltage = map(temperature, -20, 50, 0, 3300) / 1000.0;
     Serial.print(voltage);

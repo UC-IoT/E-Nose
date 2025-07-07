@@ -270,7 +270,7 @@ def register_callbacks(app):
                                      duration_minutes=float(dur), interval_seconds=float(inter),
                                      board_number=board, com_port=f"COM{int(com)}")
             keys.append(k)
-        return f"✅ Capture started on boards: {', '.join(boards)}", keys, {
+        return f"Capture started on boards: {', '.join(boards)}", keys, {
             "width": "100%", "background": "#ddd", "marginTop": "10px"
         }
 

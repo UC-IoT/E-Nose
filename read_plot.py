@@ -72,7 +72,6 @@ def register_callbacks(app):
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df[df["Flowrate (L/min)"] == flow]
 
-        # Column groupings
         voltage_b1 = [c for c in df.columns if c.startswith("B1") and c.endswith("- V") and not any(u in c for u in ["°C", "%", "KPa", "ppm", "ppb", "KOhms"])]
         voltage_b2 = [c for c in df.columns if c.startswith("B2") and c.endswith("- V") and not any(u in c for u in ["°C", "%", "KPa", "ppm", "ppb", "KOhms"])]
         ppm_b1 = [c for c in df.columns if c.startswith("B1") and any(u in c for u in ["ppm", "ppb"])]
@@ -81,7 +80,6 @@ def register_callbacks(app):
         humidity_cols = [c for c in df.columns if c.endswith("%") and "humidity" in c.lower()]
         pressure_cols = [c for c in df.columns if c.endswith("KPa")]
 
-        # Create Plotly subplots — 6 rows now (resistance removed)
         fig = make_subplots(
             rows=6, cols=1, shared_xaxes=True, vertical_spacing=0.07,
             row_heights=[0.25, 0.25, 0.15, 0.1, 0.1, 0.1],
@@ -106,7 +104,6 @@ def register_callbacks(app):
         add_traces(humidity_cols, 5)
         add_traces(pressure_cols, 6)
 
-        # Remove x-axis title text, but keep time ticks
         for i in range(1, 7):
             fig.update_xaxes(title_text="", row=i, col=1, showticklabels=True)
 
