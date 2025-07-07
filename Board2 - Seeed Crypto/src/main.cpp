@@ -98,7 +98,7 @@ void TGS2612Read(){
     sensorValue = analogRead(A2);
     sensor_volt = sensorValue/1024*5.0;
 
-    Serial.print("TGS2612 = ");
+    Serial.print("TGS2612 : ");
     Serial.print(sensor_volt);
     Serial.println("V");
 }
