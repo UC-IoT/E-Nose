@@ -1,4 +1,3 @@
-#read_plot.py
 import os
 import pandas as pd
 import plotly.graph_objects as go
@@ -48,10 +47,21 @@ def register_callbacks(app):
     def flow_opts(stage, sub):
         if not (stage and sub):
             return []
+
         csv = os.path.join(stage, sub, f"{sub}_Readings.csv")
         if not os.path.isfile(csv):
             return []
-        df = pd.read_csv(csv)
+
+        try:
+        
+            df = pd.read_csv(csv, on_bad_lines='skip') 
+        except pd.errors.ParserError as e:
+            print(f"Error reading CSV: {e}")
+            return []
+
+        if 'Flowrate (L/min)' not in df.columns:
+            return []
+
         return [{"label": f"{f} L/min", "value": f} for f in sorted(df["Flowrate (L/min)"].dropna().unique())]
 
     @app.callback(
@@ -68,7 +78,16 @@ def register_callbacks(app):
         if not os.path.isfile(csv):
             return go.Figure()
 
-        df = pd.read_csv(csv)
+        try:
+            
+            df = pd.read_csv(csv, on_bad_lines='skip')  
+        except pd.errors.ParserError as e:
+            print(f"Error reading CSV: {e}")
+            return go.Figure()
+
+        if 'Timestamp' not in df.columns or 'Flowrate (L/min)' not in df.columns:
+            return go.Figure()
+
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df[df["Flowrate (L/min)"] == flow]
 
