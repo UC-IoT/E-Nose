@@ -10,7 +10,7 @@ def layout(nav_fn):
     return html.Div(
         [
             nav_fn(),
-            html.H3("Plot historical data", style={"textAlign": "center", "marginTop": "25px"}),
+            html.H3("eNose Sensor Data", style={"textAlign": "center", "marginTop": "25px"}),
 
             html.Div(
                 [
@@ -24,7 +24,27 @@ def layout(nav_fn):
                     html.Label("Flowrate"),
                     dcc.Dropdown(id="r-flow", placeholder="Select flowrate"),
                     html.Br(),
-                    dcc.Graph(id="r-graph"),
+
+                    html.H4("B1 Voltage + Gas (ppm/ppb)"),
+                    dcc.Graph(id="b1-graph"),
+
+                    html.H4("B2 Voltage + Gas (ppm/ppb)"),
+                    dcc.Graph(id="b2-graph"),
+
+                    html.H4("Environmental Sensors"),
+                    dcc.Checklist(
+                        id="env-sensor-select",
+                        options=[
+                            {"label": "Temperature (°C)", "value": "temp"},
+                            {"label": "Humidity (%)", "value": "hum"},
+                            {"label": "Pressure (KPa)", "value": "pres"},
+                        ],
+                        value=["temp"],  # Start with only temp selected
+                        labelStyle={'display': 'inline-block', 'margin-right': '15px'}
+                    ),
+                    html.Br(),
+
+                    dcc.Graph(id="env-graph"),
                 ],
                 style={"maxWidth": "95%", "margin": "auto", "marginTop": "30px"},
             ),
@@ -53,8 +73,7 @@ def register_callbacks(app):
             return []
 
         try:
-        
-            df = pd.read_csv(csv, on_bad_lines='skip') 
+            df = pd.read_csv(csv, on_bad_lines='skip')
         except pd.errors.ParserError as e:
             print(f"Error reading CSV: {e}")
             return []
@@ -65,79 +84,120 @@ def register_callbacks(app):
         return [{"label": f"{f} L/min", "value": f} for f in sorted(df["Flowrate (L/min)"].dropna().unique())]
 
     @app.callback(
-        Output("r-graph", "figure"),
+        Output("b1-graph", "figure"),
+        Output("b2-graph", "figure"),
+        Output("env-graph", "figure"),
         Input("r-flow", "value"),
         State("r-stage", "value"),
-        State("r-substance", "value")
+        State("r-substance", "value"),
+        Input("env-sensor-select", "value"),
     )
-    def plot(flow, stage, sub):
+    def plot_all(flow, stage, sub, selected_sensors):
         if not all([stage, sub, flow]):
-            return go.Figure()
+            return go.Figure(), go.Figure(), go.Figure()
 
         csv = os.path.join(stage, sub, f"{sub}_Readings.csv")
         if not os.path.isfile(csv):
-            return go.Figure()
+            return go.Figure(), go.Figure(), go.Figure()
 
         try:
-            
-            df = pd.read_csv(csv, on_bad_lines='skip')  
+            df = pd.read_csv(csv, on_bad_lines='skip')
         except pd.errors.ParserError as e:
             print(f"Error reading CSV: {e}")
-            return go.Figure()
+            return go.Figure(), go.Figure(), go.Figure()
 
         if 'Timestamp' not in df.columns or 'Flowrate (L/min)' not in df.columns:
-            return go.Figure()
+            return go.Figure(), go.Figure(), go.Figure()
 
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df[df["Flowrate (L/min)"] == flow]
 
-        voltage_b1 = [c for c in df.columns if c.startswith("B1") and c.endswith("- V") and not any(u in c for u in ["°C", "%", "KPa", "ppm", "ppb", "KOhms"])]
-        voltage_b2 = [c for c in df.columns if c.startswith("B2") and c.endswith("- V") and not any(u in c for u in ["°C", "%", "KPa", "ppm", "ppb", "KOhms"])]
+        # Columns
+        voltage_b1 = [c for c in df.columns if c.startswith("B1") and c.endswith("- V")]
+        voltage_b2 = [c for c in df.columns if c.startswith("B2") and c.endswith("- V")]
         ppm_b1 = [c for c in df.columns if c.startswith("B1") and any(u in c for u in ["ppm", "ppb"])]
         ppm_b2 = [c for c in df.columns if c.startswith("B2") and any(u in c for u in ["ppm", "ppb"])]
         temperature_cols = [c for c in df.columns if c.endswith("°C")]
         humidity_cols = [c for c in df.columns if c.endswith("%") and "humidity" in c.lower()]
         pressure_cols = [c for c in df.columns if c.endswith("KPa")]
 
-        fig = make_subplots(
-            rows=6, cols=1, shared_xaxes=True, vertical_spacing=0.07,
-            row_heights=[0.25, 0.25, 0.15, 0.1, 0.1, 0.1],
-            subplot_titles=[
-                "<b>Board B1 — Voltage (V)</b>",
-                "<b>Board B2 — Voltage (V)</b>",
-                "<b>Gas Sensors (ppm / ppb) [B1 & B2]</b>",
-                "<b>Temperature (°C)</b>",
-                "<b>Humidity (%)</b>",
-                "<b>Pressure (KPa)</b>"
-            ]
-        )
+        # === 1. B1 Graph ===
+        fig_b1 = make_subplots(specs=[[{"secondary_y": True}]])
+        for col in voltage_b1:
+            fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"), secondary_y=False)
+        for col in ppm_b1:
+            fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines+markers"), secondary_y=True)
+        fig_b1.update_yaxes(title_text="Voltage (V)", secondary_y=False)
+        fig_b1.update_yaxes(title_text="ppm / ppb", secondary_y=True)
+        fig_b1.update_layout(title="B1 Voltage + Gas", hovermode="x unified", height=500)
 
-        def add_traces(cols, row):
+        # === 2. B2 Graph ===
+        fig_b2 = make_subplots(specs=[[{"secondary_y": True}]])
+        for col in voltage_b2:
+            fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"), secondary_y=False)
+        for col in ppm_b2:
+            fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines+markers"), secondary_y=True)
+        fig_b2.update_yaxes(title_text="Voltage (V)", secondary_y=False)
+        fig_b2.update_yaxes(title_text="ppm / ppb", secondary_y=True)
+        fig_b2.update_layout(title="B2 Voltage + Gas", hovermode="x unified", height=500)
+
+        # === 3. Environmental Graph with Smart Axis Assignment ===
+        fig_env = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_env.update_layout(title="Environmental Sensors", height=600)
+
+        left_used = False
+        right_used = False
+
+        def plot_sensor_group(cols, name, prefer_axis="left"):
+            nonlocal left_used, right_used
+            if not cols:
+                return
+            use_right = False
+
+            if prefer_axis == "left" and not left_used:
+                use_right = False
+                left_used = True
+            elif prefer_axis == "right" and not right_used:
+                use_right = True
+                right_used = True
+            elif not left_used:
+                use_right = False
+                left_used = True
+            else:
+                use_right = True
+                right_used = True
+
+            line_style = "dash" if use_right else "solid"
             for col in cols:
-                fig.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"), row=row, col=1)
+                fig_env.add_trace(
+                    go.Scatter(
+                        x=df["Timestamp"],
+                        y=df[col],
+                        name=col,
+                        mode="lines",
+                        line=dict(dash=line_style)
+                    ),
+                    secondary_y=use_right
+                )
 
-        add_traces(voltage_b1, 1)
-        add_traces(voltage_b2, 2)
-        add_traces(ppm_b1 + ppm_b2, 3)
-        add_traces(temperature_cols, 4)
-        add_traces(humidity_cols, 5)
-        add_traces(pressure_cols, 6)
+            # Y-axis title
+            if use_right:
+                fig_env.update_yaxes(title_text=name, secondary_y=True)
+            else:
+                fig_env.update_yaxes(title_text=name, secondary_y=False)
 
-        for i in range(1, 7):
-            fig.update_xaxes(title_text="", row=i, col=1, showticklabels=True)
+        # Plot based on what user selects
+        if "temp" in selected_sensors:
+            plot_sensor_group(temperature_cols, "Temperature (°C)", prefer_axis="left")
+        if "hum" in selected_sensors:
+            plot_sensor_group(humidity_cols, "Humidity (%)", prefer_axis="right")
+        if "pres" in selected_sensors:
+            plot_sensor_group(pressure_cols, "Pressure (KPa)", prefer_axis="right")
 
-        fig.update_yaxes(title_text="Voltage (V)", row=1, col=1, range=[0, 5])
-        fig.update_yaxes(title_text="Voltage (V)", row=2, col=1, range=[0, 5])
-        fig.update_yaxes(title_text="ppm / ppb", row=3, col=1)
-        fig.update_yaxes(title_text="°C", row=4, col=1)
-        fig.update_yaxes(title_text="%", row=5, col=1)
-        fig.update_yaxes(title_text="KPa", row=6, col=1)
-
-        fig.update_layout(
-            height=1700,
-            legend=dict(orientation="h", x=0, y=-0.25, title=None),
-            margin=dict(t=60, b=120),
-            hovermode="x unified"
+        fig_env.update_xaxes(title_text="Timestamp")
+        fig_env.update_layout(
+            hovermode="x unified",
+            legend=dict(orientation="h", x=0, y=-0.2)
         )
 
-        return fig
+        return fig_b1, fig_b2, fig_env

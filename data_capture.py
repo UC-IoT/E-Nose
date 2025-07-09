@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import serial
-from dash import html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output, State
 from dash.dependencies import ALL
 
 # === Configuration ===
 BAUD_RATE = 9600
 BASE_DIR = os.path.abspath(".")
-PREFIX_MAP = {"Testing": "T", "Experiment": "E", "Deployment": "D"}
+PREFIX_MAP = {"Testing": "T", "Experiment": "E", "Deployment": "D", "Baseline": "B"}
 
 # === Global Trackers ===
 CAPTURE_THREADS = {}
@@ -27,7 +27,13 @@ def capture_data(stage, substance, flowrate, duration_minutes, interval_seconds,
                  board_number, com_port, session_key):
 
     folder_prefix = PREFIX_MAP.get(stage, "X")
-    folder = os.path.join(stage, substance)
+    
+    if stage == "Baseline":
+        folder = os.path.join("Baseline", "baseline")
+        substance = "baseline"
+    else:
+        folder = os.path.join(stage, substance.title())
+    
     os.makedirs(folder, exist_ok=True)
 
     run_no = len([
@@ -119,20 +125,17 @@ def capture_data(stage, substance, flowrate, duration_minutes, interval_seconds,
         print(f"[INFO] No data recorded from {board_number}.")
         return
 
-    # === Save individual board data into shared dict for merging ===
     if "MERGED_DATA" not in CAPTURE_PROGRESS:
         CAPTURE_PROGRESS["MERGED_DATA"] = {}
 
     CAPTURE_PROGRESS["MERGED_DATA"][board_number] = readings
 
-    # === Only proceed if all threads finished ===
     all_done = all(progress == 100 for key, progress in CAPTURE_PROGRESS.items()
                    if key != "MERGED_DATA")
 
     if not all_done:
         return
 
-    # === Merge rows by timestamp across boards ===
     combined_rows = []
     board_data = CAPTURE_PROGRESS["MERGED_DATA"]
     max_len = max(len(r) for r in board_data.values())
@@ -185,10 +188,8 @@ def layout(nav):
                          placeholder="Select stage"),
 
             html.Br(),
-            html.Label("Substance"),
-            dcc.Input(id="w-substance", type="text", placeholder="e.g. Ethanol"),
+            html.Div(id="substance-field"),
 
-            html.Br(), html.Br(),
             html.Label("Flow-rate (L/min)"),
             dcc.Input(id="w-flow", type="number", min=1, max=5, step=0.1),
 
@@ -217,6 +218,7 @@ def layout(nav):
                 html.Div(id="progress-fill",
                          style={"height": "25px", "width": "0%", "background": "#28a745",
                                 "color": "white", "textAlign": "center"}),
+
             ], id="progress-container",
                 style={"width": "100%", "background": "#ddd", "marginTop": "10px", "display": "none"}),
 
@@ -224,9 +226,22 @@ def layout(nav):
             dcc.Store(id="w-session"),
         ], style={"maxWidth": "420px", "margin": "auto"})
     ])
-from dash.dependencies import Input, Output, State, ALL
 
+# === Callbacks ===
 def register_callbacks(app):
+    @app.callback(
+        Output("substance-field", "children"),
+        Input("w-stage", "value")
+    )
+    def show_substance_input(stage):
+        if stage == "Baseline":
+            return html.Div()
+        return html.Div([
+            html.Label("Substance"),
+            dcc.Input(id="w-substance", type="text", placeholder="e.g. Ethanol"),
+            html.Br(), html.Br()
+        ])
+
     @app.callback(
         Output("board-fields", "children"),
         Input("w-nboards", "value")
@@ -261,9 +276,13 @@ def register_callbacks(app):
         prevent_initial_call=True
     )
     def start_multi_capture(n, stage, sub, flow, dur, inter, boards, coms):
-        if not all([stage, sub, flow, dur, inter]) or not all(boards) or not all(coms):
+        if not all([stage, flow, dur, inter]) or not all(boards) or not all(coms):
             return "⚠️ Please complete all fields.", None, {"display": "none"}
-        sub = sub.title()
+
+        if stage != "Baseline" and not sub:
+            return "⚠️ Substance is required for non-Baseline stages.", None, {"display": "none"}
+
+        sub = sub.title() if sub else "baseline"
         keys = []
         for board, com in zip(boards, coms):
             k = start_capture_thread(stage=stage, substance=sub, flowrate=float(flow),
