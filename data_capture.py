@@ -119,17 +119,20 @@ def capture_data(stage, substance, flowrate, duration_minutes, interval_seconds,
         print(f"[INFO] No data recorded from {board_number}.")
         return
 
+    # === Save individual board data into shared dict for merging ===
     if "MERGED_DATA" not in CAPTURE_PROGRESS:
         CAPTURE_PROGRESS["MERGED_DATA"] = {}
 
     CAPTURE_PROGRESS["MERGED_DATA"][board_number] = readings
 
+    # === Only proceed if all threads finished ===
     all_done = all(progress == 100 for key, progress in CAPTURE_PROGRESS.items()
                    if key != "MERGED_DATA")
 
     if not all_done:
         return
 
+    # === Merge rows by timestamp across boards ===
     combined_rows = []
     board_data = CAPTURE_PROGRESS["MERGED_DATA"]
     max_len = max(len(r) for r in board_data.values())
@@ -221,8 +224,8 @@ def layout(nav):
             dcc.Store(id="w-session"),
         ], style={"maxWidth": "420px", "margin": "auto"})
     ])
+from dash.dependencies import Input, Output, State, ALL
 
-# === Callbacks ===
 def register_callbacks(app):
     @app.callback(
         Output("board-fields", "children"),
@@ -267,24 +270,21 @@ def register_callbacks(app):
                                      duration_minutes=float(dur), interval_seconds=float(inter),
                                      board_number=board, com_port=f"COM{int(com)}")
             keys.append(k)
-        return f"✅ Capture started on boards: {', '.join(boards)}", keys, {
+        return f"Capture started on boards: {', '.join(boards)}", keys, {
             "width": "100%", "background": "#ddd", "marginTop": "10px"
         }
 
     @app.callback(
         Output("progress-fill", "style"),
-        Output("w-status", "children"),
         Input("progress-interval", "n_intervals"),
         State("w-session", "data"),
         prevent_initial_call=True
     )
     def update_progress_bar(_n, keys):
         if not keys:
-            return {"display": "none"}, ""
-
+            return {"display": "none"}
         avg = sum(CAPTURE_PROGRESS.get(k, 0) for k in keys) / len(keys)
-
-        style = {
+        return {
             "height": "25px",
             "width": f"{avg:.2f}%",
             "background": "#28a745",
@@ -292,8 +292,3 @@ def register_callbacks(app):
             "textAlign": "center",
             "display": "block"
         }
-
-        if avg >= 100:
-            return style, "Data capture completed"
-        else:
-            return style, ""
