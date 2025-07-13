@@ -31,20 +31,22 @@ def layout(nav_fn):
                     html.H4("B2 Voltage + Gas (ppm/ppb)"),
                     dcc.Graph(id="b2-graph"),
 
-                    html.H4("Environmental Sensors"),
+                    html.H4("Environmental Sensors (B1 Voltage + Env Native Units)"),
                     dcc.Checklist(
                         id="env-sensor-select",
                         options=[
-                            {"label": "Temperature (°C)", "value": "temp"},
-                            {"label": "Humidity (%)", "value": "hum"},
                             {"label": "Pressure (KPa)", "value": "pres"},
+                            {"label": "Humidity (%)", "value": "hum"},
+                            {"label": "Temperature (°C)", "value": "temp"},
                         ],
-                        value=["temp"],  # Start with only temp selected
+                        value=["temp"],
                         labelStyle={'display': 'inline-block', 'margin-right': '15px'}
                     ),
                     html.Br(),
+                    dcc.Graph(id="env-b1-graph"),
 
-                    dcc.Graph(id="env-graph"),
+                    html.H4("Environmental Sensors (B2 Voltage + Env Native Units)"),
+                    dcc.Graph(id="env-b2-graph"),
                 ],
                 style={"maxWidth": "95%", "margin": "auto", "marginTop": "30px"},
             ),
@@ -86,7 +88,8 @@ def register_callbacks(app):
     @app.callback(
         Output("b1-graph", "figure"),
         Output("b2-graph", "figure"),
-        Output("env-graph", "figure"),
+        Output("env-b1-graph", "figure"),
+        Output("env-b2-graph", "figure"),
         Input("r-flow", "value"),
         State("r-stage", "value"),
         State("r-substance", "value"),
@@ -94,110 +97,111 @@ def register_callbacks(app):
     )
     def plot_all(flow, stage, sub, selected_sensors):
         if not all([stage, sub, flow]):
-            return go.Figure(), go.Figure(), go.Figure()
+            return go.Figure(), go.Figure(), go.Figure(), go.Figure()
 
         csv = os.path.join(stage, sub, f"{sub}_Readings.csv")
         if not os.path.isfile(csv):
-            return go.Figure(), go.Figure(), go.Figure()
+            return go.Figure(), go.Figure(), go.Figure(), go.Figure()
 
         try:
             df = pd.read_csv(csv, on_bad_lines='skip')
         except pd.errors.ParserError as e:
             print(f"Error reading CSV: {e}")
-            return go.Figure(), go.Figure(), go.Figure()
+            return go.Figure(), go.Figure(), go.Figure(), go.Figure()
 
         if 'Timestamp' not in df.columns or 'Flowrate (L/min)' not in df.columns:
-            return go.Figure(), go.Figure(), go.Figure()
+            return go.Figure(), go.Figure(), go.Figure(), go.Figure()
 
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
         df = df[df["Flowrate (L/min)"] == flow]
 
-        # Columns
         voltage_b1 = [c for c in df.columns if c.startswith("B1") and c.endswith("- V")]
         voltage_b2 = [c for c in df.columns if c.startswith("B2") and c.endswith("- V")]
         ppm_b1 = [c for c in df.columns if c.startswith("B1") and any(u in c for u in ["ppm", "ppb"])]
         ppm_b2 = [c for c in df.columns if c.startswith("B2") and any(u in c for u in ["ppm", "ppb"])]
+
         temperature_cols = [c for c in df.columns if c.endswith("°C")]
         humidity_cols = [c for c in df.columns if c.endswith("%") and "humidity" in c.lower()]
         pressure_cols = [c for c in df.columns if c.endswith("KPa")]
 
-        # === 1. B1 Graph ===
+        # === B1 ===
         fig_b1 = make_subplots(specs=[[{"secondary_y": True}]])
-        for col in voltage_b1:
-            fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"), secondary_y=False)
-        for col in ppm_b1:
-            fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines+markers"), secondary_y=True)
-        fig_b1.update_yaxes(title_text="Voltage (V)", secondary_y=False)
+        for v_col in voltage_b1:
+            sensor_id = v_col.replace(" - V", "")
+            fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[v_col], name=v_col, mode="lines",
+                                        legendgroup=sensor_id), secondary_y=False)
+            for g_col in [c for c in ppm_b1 if sensor_id in c]:
+                fig_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[g_col], name=g_col, mode="lines+markers",
+                                            legendgroup=sensor_id), secondary_y=True)
+        fig_b1.update_xaxes(title_text="Time")
+        fig_b1.update_yaxes(title_text="Voltage (V)", secondary_y=False, range=[0, 5])
         fig_b1.update_yaxes(title_text="ppm / ppb", secondary_y=True)
         fig_b1.update_layout(title="B1 Voltage + Gas", hovermode="x unified", height=500)
 
-        # === 2. B2 Graph ===
+        # === B2 ===
         fig_b2 = make_subplots(specs=[[{"secondary_y": True}]])
-        for col in voltage_b2:
-            fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"), secondary_y=False)
-        for col in ppm_b2:
-            fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines+markers"), secondary_y=True)
-        fig_b2.update_yaxes(title_text="Voltage (V)", secondary_y=False)
+        for v_col in voltage_b2:
+            sensor_id = v_col.replace(" - V", "")
+            fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[v_col], name=v_col, mode="lines",
+                                        legendgroup=sensor_id), secondary_y=False)
+            for g_col in [c for c in ppm_b2 if sensor_id in c]:
+                fig_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[g_col], name=g_col, mode="lines+markers",
+                                            legendgroup=sensor_id), secondary_y=True)
+        fig_b2.update_xaxes(title_text="Time")
+        fig_b2.update_yaxes(title_text="Voltage (V)", secondary_y=False, range=[0, 5])
         fig_b2.update_yaxes(title_text="ppm / ppb", secondary_y=True)
         fig_b2.update_layout(title="B2 Voltage + Gas", hovermode="x unified", height=500)
 
-        # === 3. Environmental Graph with Smart Axis Assignment ===
-        fig_env = make_subplots(specs=[[{"secondary_y": True}]])
-        fig_env.update_layout(title="Environmental Sensors", height=600)
+        # === Environmental B1 ===
+        fig_env_b1 = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_env_b1.update_layout(title="Environmental Sensors B1", height=600)
 
-        left_used = False
-        right_used = False
+        for col in voltage_b1:
+            fig_env_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"),
+                                 secondary_y=False)
 
-        def plot_sensor_group(cols, name, prefer_axis="left"):
-            nonlocal left_used, right_used
-            if not cols:
-                return
-            use_right = False
-
-            if prefer_axis == "left" and not left_used:
-                use_right = False
-                left_used = True
-            elif prefer_axis == "right" and not right_used:
-                use_right = True
-                right_used = True
-            elif not left_used:
-                use_right = False
-                left_used = True
-            else:
-                use_right = True
-                right_used = True
-
-            line_style = "dash" if use_right else "solid"
-            for col in cols:
-                fig_env.add_trace(
-                    go.Scatter(
-                        x=df["Timestamp"],
-                        y=df[col],
-                        name=col,
-                        mode="lines",
-                        line=dict(dash=line_style)
-                    ),
-                    secondary_y=use_right
-                )
-
-            # Y-axis title
-            if use_right:
-                fig_env.update_yaxes(title_text=name, secondary_y=True)
-            else:
-                fig_env.update_yaxes(title_text=name, secondary_y=False)
-
-        # Plot based on what user selects
         if "temp" in selected_sensors:
-            plot_sensor_group(temperature_cols, "Temperature (°C)", prefer_axis="left")
+            for col in temperature_cols:
+                fig_env_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
         if "hum" in selected_sensors:
-            plot_sensor_group(humidity_cols, "Humidity (%)", prefer_axis="right")
+            for col in humidity_cols:
+                fig_env_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
         if "pres" in selected_sensors:
-            plot_sensor_group(pressure_cols, "Pressure (KPa)", prefer_axis="right")
+            for col in pressure_cols:
+                fig_env_b1.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
 
-        fig_env.update_xaxes(title_text="Timestamp")
-        fig_env.update_layout(
-            hovermode="x unified",
-            legend=dict(orientation="h", x=0, y=-0.2)
-        )
+        fig_env_b1.update_xaxes(title_text="Time")
+        fig_env_b1.update_yaxes(title_text="Gas Sensor Voltage (V)", secondary_y=False, range=[0, 5])
+        fig_env_b1.update_yaxes(title_text="Unit", secondary_y=True, autorange='reversed')
+        fig_env_b1.update_layout(hovermode="x unified", legend=dict(orientation="h", x=0, y=-0.2))
 
-        return fig_b1, fig_b2, fig_env
+        # === Environmental B2 ===
+        fig_env_b2 = make_subplots(specs=[[{"secondary_y": True}]])
+        fig_env_b2.update_layout(title="Environmental Sensors B2", height=600)
+
+        for col in voltage_b2:
+            fig_env_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines"),
+                                 secondary_y=False)
+
+        if "temp" in selected_sensors:
+            for col in temperature_cols:
+                fig_env_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
+        if "hum" in selected_sensors:
+            for col in humidity_cols:
+                fig_env_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
+        if "pres" in selected_sensors:
+            for col in pressure_cols:
+                fig_env_b2.add_trace(go.Scatter(x=df["Timestamp"], y=df[col], name=col, mode="lines", line=dict(dash="dash")),
+                                     secondary_y=True)
+
+        fig_env_b2.update_xaxes(title_text="Time")
+        fig_env_b2.update_yaxes(title_text="Gas Sensor Voltage (V)", secondary_y=False, range=[0, 5])
+        fig_env_b2.update_yaxes(title_text="Unit", secondary_y=True, autorange='reversed')
+        fig_env_b2.update_layout(hovermode="x unified", legend=dict(orientation="h", x=0, y=-0.2))
+
+        return fig_b1, fig_b2, fig_env_b1, fig_env_b2
