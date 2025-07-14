@@ -1,8 +1,8 @@
 # app.py
-import argparse, webbrowser
-from dash import Dash, dcc, html, Input, Output
+import argparse
 import threading
 import webbrowser
+from dash import Dash, dcc, html, Input, Output
 
 import data_capture           
 import read_plot
@@ -12,7 +12,7 @@ import read_plot
 def nav():
     return html.Div(
         [
-            html.A("Home", href="/",          style={"marginRight": "20px"}),
+            html.A("Home", href="/", style={"marginRight": "20px"}),
             html.A("Write Data", href="/write", style={"marginRight": "20px"}),
             html.A("Read / Plot", href="/read"),
         ],
@@ -20,7 +20,7 @@ def nav():
     )
 
 
-# ─────────────  home page ─────────────
+# ───────────── home page ─────────────
 def home():
     return html.Div(
         [
@@ -48,16 +48,15 @@ def create_app():
     @app.callback(Output("page", "children"), Input("url", "pathname"))
     def display_page(pathname):
         if pathname == "/write":
-            return data_capture.layout(nav)           
+            return data_capture.layout(nav)
         elif pathname == "/read":
-            return read_plot.layout(nav)              
+            return read_plot.layout(nav)
         return home()
 
-   
     data_capture.register_callbacks(app)
     read_plot.register_callbacks(app)
 
-
+    # Validation layout for callback exceptions when loading pages dynamically
     app.validation_layout = html.Div(
         [
             dcc.Location(id="url"),
@@ -81,4 +80,3 @@ if __name__ == "__main__":
 
     threading.Timer(1.0, open_browser).start()
     app.run(debug=args.debug, port=8050)
-
