@@ -3,10 +3,8 @@ import argparse
 import threading
 import webbrowser
 from dash import Dash, dcc, html, Input, Output
-
 import data_capture           
 import read_plot
-
 
 # ───────────── navigation bar ─────────────
 def nav():
