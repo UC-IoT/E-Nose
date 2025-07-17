@@ -250,7 +250,7 @@ void TGS2600Read(){
     float sensorValue;
 
     sensorValue = analogRead(A0);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("TGS2600: ");
     Serial.print(sensor_volt);
@@ -262,7 +262,7 @@ void TGS2602Read(){
     float sensorValue;
 
     sensorValue = analogRead(A1);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("TGS2602: ");
     Serial.print(sensor_volt);
@@ -274,7 +274,7 @@ void TGS2603Read(){
     float sensorValue;
 
     sensorValue = analogRead(A2);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("TGS2603: ");
     Serial.print(sensor_volt);
@@ -286,7 +286,7 @@ void MQ2Read(){
     float sensorValue;
 
     sensorValue = analogRead(A3);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("MQ2: ");
     Serial.print(sensor_volt);
