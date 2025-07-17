@@ -72,7 +72,7 @@ void TGS2610Read(){
     float sensorValue;
 
     sensorValue = analogRead(A0);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("TGS2610: ");
     Serial.print(sensor_volt);
@@ -96,7 +96,7 @@ void TGS2612Read(){
     float sensorValue;
 
     sensorValue = analogRead(A2);
-    sensor_volt = sensorValue/1024*5.0;
+    sensor_volt = sensorValue/1024*3.3;
 
     Serial.print("TGS2612: ");
     Serial.print(sensor_volt);
