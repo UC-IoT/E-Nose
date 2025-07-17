@@ -1,1 +1,5 @@
 .venv
+/Testing
+.DS_Store
+.vscode
+*.txt
