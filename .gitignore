@@ -1,9 +1,6 @@
 .venv
-<<<<<<< HEAD
-.DS_Store
-=======
 /Testing
 .DS_Store
 .vscode
 *.txt
->>>>>>> origin/sgp41
+__pycache__
