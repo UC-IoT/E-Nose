@@ -157,7 +157,7 @@ void MQ9_bRead()
 
 void BME680Read()
 {
-  Serial.println("Reading BME688...");
+  Serial.println("Reading BME680...");
   bme68xData data;
 	uint8_t nFieldsLeft = 0;
 
