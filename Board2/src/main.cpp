@@ -11,6 +11,10 @@ SensirionI2CSgp41 sgp41;
 #define NEW_GAS_MEAS (BME68X_GASM_VALID_MSK | BME68X_HEAT_STAB_MSK | BME68X_NEW_DATA_MSK)
 #define BME68X_I2C_ADDR  0x76
 
+// Define MEAS_DUR in milliseconds (adjust as needed for your application)
+#define MEAS_DUR 100
+
+
 Bme68x bme;
 
 // Declare VOC and NOx algorithm parameter structures
@@ -57,7 +61,7 @@ void BME680Setup()
 	bme.setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
 	bme.setOpMode(BME68X_PARALLEL_MODE);
 
-	Serial.println("TimeStamp(ms), Temperature(deg C), Pressure(Pa), Humidity(%), Gas resistance(ohm), Status, Gas index");
+	//Serial.println("TimeStamp(ms), Temperature(deg C), Pressure(Pa), Humidity(%), Gas resistance(ohm), Status, Gas index");
 
 }
 
@@ -161,12 +165,17 @@ void BME680Read()
 	{
 			nFieldsLeft = bme.getData(data);
 		
-				Serial.println(String(millis()) + " ms");
+				//Serial.println(String(millis()) + " ms");
+        Serial.print("Temperature: ");
 				Serial.println(String(data.temperature) + " °C ");
+        Serial.print("Pressure: ");
 				Serial.println(String(data.pressure) + " Pa ");
+        Serial.print("Humidity: ");
 				Serial.println(String(data.humidity) + " % ");
+        Serial.print("Gas Resistance: ");
 				Serial.println(String(data.gas_resistance) + " ohm ");
-				Serial.println(String(data.status, HEX));
+				//Serial.println(String(data.status, HEX));
+        Serial.print("Gas Index: ");
 				Serial.println(data.gas_index);
 			}
 
@@ -214,11 +223,11 @@ void SGP41Read()
     // Output
     Serial.print("VOC Raw: ");
     Serial.println(srawVoc);
-    Serial.print(" | NOx Raw: ");
+    Serial.print("NOx Raw: ");
     Serial.println(srawNox);
-    Serial.print(" ==>> VOC Index: ");
+    Serial.print("VOC Index: ");
     Serial.println(vocIndex);
-    Serial.print(" | NOx Index: ");
+    Serial.print("NOx Index: ");
     Serial.println(noxIndex);
   }
 }

@@ -85,7 +85,7 @@ void BME688Setup()
 	bme.setHeaterProf(tempProf, mulProf, sharedHeatrDur, 10);
 	bme.setOpMode(BME68X_PARALLEL_MODE);
 
-	Serial.println("TimeStamp(ms), Temperature(deg C), Pressure(Pa), Humidity(%), Gas resistance(ohm), Status, Gas index");
+	//Serial.println("TimeStamp(ms), Temperature(deg C), Pressure(Pa), Humidity(%), Gas resistance(ohm), Status, Gas index");
 
 }
 
@@ -197,12 +197,17 @@ void BME688Read()
 	{
 			nFieldsLeft = bme.getData(data);
 		
-				Serial.println(String(millis()) + " ms");
+				//Serial.println(String(millis()) + " ms");
+        Serial.print("Temperature: ");
 				Serial.println(String(data.temperature) + " °C ");
+        Serial.print("Pressure: ");
 				Serial.println(String(data.pressure) + " Pa ");
+        Serial.print("Humidity: ");
 				Serial.println(String(data.humidity) + " % ");
+        Serial.print("Gas Resistance: ");
 				Serial.println(String(data.gas_resistance) + " ohm ");
-				Serial.println(String(data.status, HEX));
+				//Serial.println(String(data.status, HEX));
+        Serial.print("Gas Index: ");
 				Serial.println(data.gas_index);
 			}
 
