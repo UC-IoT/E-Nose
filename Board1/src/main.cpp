@@ -205,7 +205,7 @@ void BME688Read()
         Serial.print("Humidity: ");
 				Serial.println(String(data.humidity) + " % ");
         Serial.print("Gas Resistance: ");
-				Serial.println(String(data.gas_resistance) + " ohm ");
+				Serial.println(String(data.gas_resistance / 1000.0, 2) + " kOhm ");
 				//Serial.println(String(data.status, HEX));
         Serial.print("Gas Index: ");
 				Serial.println(data.gas_index);
