@@ -1,6 +1,8 @@
 .venv
 /Testing
+/Extras
 .DS_Store
 .vscode
 *.txt
 __pycache__
+test.py

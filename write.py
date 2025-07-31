@@ -277,10 +277,10 @@ def register_callbacks(app):
     )
     def start_multi_capture(n, stage, sub, flow, dur, inter, boards, coms):
         if not all([stage, flow, dur, inter]) or not all(boards) or not all(coms):
-            return "⚠️ Please complete all fields.", None, {"display": "none"}
+            return "Please complete all fields.", None, {"display": "none"}
 
         if stage != "Baseline" and not sub:
-            return "⚠️ Substance is required for non-Baseline stages.", None, {"display": "none"}
+            return "Substance is required for non-Baseline stages.", None, {"display": "none"}
 
         sub = sub.title() if sub else "baseline"
         keys = []

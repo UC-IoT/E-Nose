@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from dash import dcc, html, Input, Output, State
-from data_capture import PREFIX_MAP
+from write import PREFIX_MAP
 
 def layout(nav_fn):
     return html.Div(

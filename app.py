@@ -1,24 +1,23 @@
-# app.py
 import argparse
 import threading
 import webbrowser
 from dash import Dash, dcc, html, Input, Output
-import data_capture           
-import read_plot
 
-# ───────────── navigation bar ─────────────
+import write
+import read
+import realtime
+
 def nav():
     return html.Div(
         [
             html.A("Home", href="/", style={"marginRight": "20px"}),
             html.A("Write Data", href="/write", style={"marginRight": "20px"}),
-            html.A("Read / Plot", href="/read"),
+            html.A("Read / Plot", href="/read", style={"marginRight": "20px"}),
+            html.A("Live Data", href="/live"),
         ],
         style={"padding": "10px 20px", "background": "#f0f0f0"},
     )
 
-
-# ───────────── home page ─────────────
 def home():
     return html.Div(
         [
@@ -28,15 +27,14 @@ def home():
                 [
                     html.A("→ Go to Write Data", href="/write",
                            style={"marginRight": "40px", "fontSize": "20px"}),
-                    html.A("→ Go to Read / Plot", href="/read", style={"fontSize": "20px"}),
+                    html.A("→ Go to Read / Plot", href="/read", style={"marginRight": "40px", "fontSize": "20px"}),
+                    html.A("→ Go to Live Data", href="/live", style={"fontSize": "20px"}),
                 ],
                 style={"textAlign": "center", "marginTop": "60px"},
             ),
         ]
     )
 
-
-# ───────────── build & wire the Dash app ─────────────
 def create_app():
     app = Dash(__name__, suppress_callback_exceptions=True)
     app.title = "eNose Dashboard"
@@ -46,25 +44,25 @@ def create_app():
     @app.callback(Output("page", "children"), Input("url", "pathname"))
     def display_page(pathname):
         if pathname == "/write":
-            return data_capture.layout(nav)
+            return write.layout(nav)
         elif pathname == "/read":
-            return read_plot.layout(nav)
+            return read.layout(nav)
+        elif pathname == "/live":
+            return realtime.layout(nav)
         return home()
 
-    data_capture.register_callbacks(app)
-    read_plot.register_callbacks(app)
+    write.register_callbacks(app)
+    read.register_callbacks(app)
+    realtime.register_callbacks(app)
 
-    # Validation layout for callback exceptions when loading pages dynamically
-    app.validation_layout = html.Div(
-        [
-            dcc.Location(id="url"),
-            data_capture.layout(nav),
-            read_plot.layout(nav),
-            home(),
-        ]
-    )
+    app.validation_layout = html.Div([
+        dcc.Location(id="url"),
+        write.layout(nav),
+        read.layout(nav),
+        realtime.layout(nav),
+        home(),
+    ])
     return app
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

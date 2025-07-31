@@ -1,6 +1,11 @@
-import plotly.graph_objects as go
+import firebase_admin
+from firebase_admin import credentials, db
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=[1, 2, 3], y=[4, 5, 6]))
-fig.update_layout(title="Sample Plot")
-fig.show()
+cred = credentials.Certificate("project-enose-firebase-adminsdk-fbsvc-ec94e41662.json")
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://project-enose-default-rtdb.firebaseio.com/'
+})
+
+ref = db.reference("/test")
+ref.set({"hello": "world"})
+print("Uploaded test data!")
