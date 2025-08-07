@@ -58,15 +58,11 @@ def extract_numeric(value):
 
 def get_file_paths(stage, substance):
     folder_prefix = PREFIX_MAP.get(stage, "X")
-    if stage == "Baseline":
-        folder = os.path.join("Baseline", "baseline")
-        substance = "baseline"
-    else:
-        folder = os.path.join(stage, substance.title())
+    timestamp_folder = datetime.now().strftime("%H-%M-%S %d-%m-%Y")
+    folder = os.path.join(stage, substance.title(), timestamp_folder)
     os.makedirs(folder, exist_ok=True)
 
-    run_no = len([f for f in os.listdir(folder)
-                  if f.lower().startswith((folder_prefix + substance).lower()) and f.endswith(".csv")]) + 1
+    run_no = len([f for f in os.listdir(folder) if f.endswith(".csv")]) + 1
     serial_id = f"{run_no:04d}"
     session_name = f"{folder_prefix}{substance}{serial_id}"
     csv_file = os.path.join(folder, f"{session_name}.csv")
@@ -85,9 +81,13 @@ def push_to_firebase(stage, substance, data):
                 clean_data[k] = None
             else:
                 clean_data[k] = v
-        db.reference(f"{stage}/{substance}").push(clean_data)
+
+        timestamp_path = datetime.now().strftime("%H-%M-%S %d-%m-%Y")
+        db.reference(f"{stage}/{substance}/{timestamp_path}").push(clean_data)
+
     except Exception as e:
         print("[FIREBASE ERROR]", e)
+
 
 # === Save merged CSV row ===
 def save_merged_row(timestamp):
@@ -374,6 +374,7 @@ def register_callbacks(app):
                 )
                 graphs.append(html.Div([dcc.Graph(figure=fig)],
                                        style={"width": "48%", "display": "inline-block", "margin": "1%"}))
+
         return graphs
 
 
