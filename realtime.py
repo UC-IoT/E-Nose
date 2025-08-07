@@ -375,3 +375,9 @@ def register_callbacks(app):
                 graphs.append(html.Div([dcc.Graph(figure=fig)],
                                        style={"width": "48%", "display": "inline-block", "margin": "1%"}))
         return graphs
+
+
+
+
+
+
