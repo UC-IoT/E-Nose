@@ -8,6 +8,8 @@ import plotly.graph_objs as go
 
 import firebase_admin
 from firebase_admin import credentials, db
+from dotenv import load_dotenv
+load_dotenv()
 
 # === Firebase Setup ===
 BASE_DIR = os.path.abspath(".")
@@ -16,7 +18,7 @@ service_key_path = os.path.join(BASE_DIR, "project-enose-firebase-adminsdk-fbsvc
 if not firebase_admin._apps:
     cred = credentials.Certificate(service_key_path)
     firebase_admin.initialize_app(cred, {
-        'databaseURL': 'https://project-enose-default-rtdb.firebaseio.com/'
+        'databaseURL': os.getenv("databaseURL")
     })
 
 # === Config ===
