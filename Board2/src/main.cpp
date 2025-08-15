@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <SoftwareSerial.h>
 
 // Sensors' libraries
 #include <SensirionI2CSgp41.h>
@@ -24,18 +23,6 @@ GasIndexAlgorithmParams noxParams;
 
 // Declare and initialize conditioning_s for SGP41 conditioning phase
 int conditioning_s = 10; // Set to desired number of seconds for conditioning
-
-// Create SoftwareSerial on D2 (TX), D3 (RX)
-SoftwareSerial co2Serial(2, 3);
- 
-const byte cmd_get_sensor[] = {
-    0xFF, 0x01, 0x86,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x79
-};
- 
-int readCO2();
-bool sendCommandAndReadResponse(byte* response);
 
 void BME680Setup()
 {
@@ -79,7 +66,6 @@ void BME680Setup()
 }
 
 void SGP41Setup()
-
 {
   Serial.println("Initiating SGP41...");
   while (!Serial)
@@ -129,13 +115,6 @@ void SGP41Setup()
   Serial.println("Gas index algorithms initialized.");
 }
 
-void CO2Setup()
-{
-  Serial.println("Initiating CO2 sensor...");
-  co2Serial.begin(9600);
-  Serial.println("CO2 sensor ready.");
-}
-
 void TGS2610Read()
 {
   float sensorValue;
@@ -170,7 +149,7 @@ void MQ9_bRead()
 {
   float sensorValue;
 
-  sensorValue = analogRead(A3);
+  sensorValue = analogRead(A1);
 
   Serial.print("MQ9_b: ");
   Serial.println(sensorValue);
@@ -253,59 +232,6 @@ void SGP41Read()
   }
 }
 
-void CO2Read()
-{
-    Serial.println("Reading CO2...");
-    int co2ppm = readCO2();
-    if (co2ppm > 0) {
-        Serial.print("CO2 Concentration: ");
-        Serial.print(co2ppm);
-        Serial.println(" ppm");
-    } else {
-        Serial.println("Sensor read failed.");
-    }
-}
-
-int readCO2() {
-    byte response[9];
-    if (sendCommandAndReadResponse(response)) {
-        // Check header
-        if (response[0] != 0xFF || response[1] != 0x86)
-            return -1;
- 
-        // Validate checksum
-        byte checksum = 0xFF - (response[1] + response[2] + response[3] +
-                                response[4] + response[5] + response[6] + response[7]) + 1;
-        if (response[8] != checksum)
-            return -2;
- 
-        // Extract CO2 value
-        int ppm = response[2] * 256 + response[3];
-        return ppm;
-    }
-    return -3;
-}
- 
-bool sendCommandAndReadResponse(byte* response) {
-    // Clear any stale data
-    while (co2Serial.available()) co2Serial.read();
- 
-    // Send command
-    for (byte b : cmd_get_sensor) {
-        co2Serial.write(b);
-    }
- 
-    // Wait for response (max 100ms)
-    unsigned long start = millis();
-    int i = 0;
-    while (i < 9 && millis() - start < 300) {
-        if (co2Serial.available()) {
-            response[i++] = co2Serial.read();
-        }
-    }
-    return i == 9;
-}
-
 void setup()
 {
   // put your setup code here, to run once:
@@ -318,10 +244,6 @@ void setup()
   // Initiate SGP30
   delay(1000);
   SGP41Setup();
-
-  // Initiate CO2 sensor
-  delay(1000);
-  CO2Setup();
 
   Serial.println("All sensors initiated successfully!");
   Serial.println("Starting to read data...");
@@ -337,8 +259,7 @@ void loop()
   MQ9_bRead();
   BME680Read();
   SGP41Read();
-  CO2Read();
   Serial.println();
   Serial.println();
-  delay(1000);
+  delay(250);
 }

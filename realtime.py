@@ -13,7 +13,7 @@ load_dotenv()
 
 # === Firebase Setup ===
 BASE_DIR = os.path.abspath(".")
-service_key_path = os.path.join(BASE_DIR, "project-enose-firebase-adminsdk-fbsvc-ec94e41662.json")
+service_key_path = os.path.join(BASE_DIR, "serviceAccountKey.json")
 
 if not firebase_admin._apps:
     cred = credentials.Certificate(service_key_path)
