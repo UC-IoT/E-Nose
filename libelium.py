@@ -1,27 +1,4 @@
 # === libelium.py ===
-# Reads Libelium / Waspmote Gas Pro boards over serial (Windows-friendly)
-# Provides: threaded readers for LB1 and LB2, line parsing, latest-sample cache,
-# and helper functions so realtime.py / write.py can consume readings.
-#
-# Serial output expected like:
-# ***************************************
-# NO: 0.123 ppm
-# CO: 0.456 ppm
-# NO2: 0.078 ppm
-# NH3: 0.010 ppm
-# O2: 20.9 ppm   (we will map O2 to % if your firmware prints %; otherwise leave as-is)
-#
-# Baud: 9600 (configurable)
-# OS: Windows (COMx), also works on Linux/macOS (/dev/ttyUSB* or /dev/tty.*)
-#
-# Ranges used elsewhere (for live charts):
-# - NO: 0–10 ppm  (see OSHA/NIOSH references in realtime.py)
-# - NO2: 0–5 ppm
-# - NH3: 0–100 ppm
-# - CO: 0–200 ppm
-# - O2: 0–25 % (ambient ~21%)
-#
-# Author: eNose project
 
 import re
 import time
@@ -34,14 +11,14 @@ from serial.tools import list_ports
 
 # === Configuration ===
 DEFAULT_BAUD = 9600
-READ_TIMEOUT = 1.0   # seconds
+READ_TIMEOUT = 1.0   
 LINE_RE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*:\s*([-+]?\d*\.?\d+)\s*([A-Za-z%/]+)?\s*$")
 
-SENSOR_KEYS = ["NO", "CO", "NO2", "NH3", "O2"]  # we normalize to these keys
+SENSOR_KEYS = ["NO", "CO", "NO2", "NH3", "O2"]  
 
 # === State ===
-_readers = {}          # name -> SerialReader
-_latest = {}           # name -> dict of last readings
+_readers = {}         
+_latest = {}           
 _latest_lock = threading.Lock()
 
 
@@ -56,13 +33,12 @@ def list_serial_ports() -> Dict[str, str]:
 class SerialReader(threading.Thread):
     def __init__(self, name: str, port: str, baud: int = DEFAULT_BAUD):
         super().__init__(daemon=True)
-        self.name = name          # "LB1" or "LB2"
+        self.name = name          
         self.port = port
         self.baud = baud
         self.stop_flag = threading.Event()
         self.ser: Optional[serial.Serial] = None
-        self.current: Dict[str, float] = {}  # collect between separators
-
+        self.current: Dict[str, float] = {}  
     def run(self):
         while not self.stop_flag.is_set():
             try:
@@ -74,7 +50,6 @@ class SerialReader(threading.Thread):
                 if not line:
                     continue
 
-                # Separator line observed in your sketch
                 if line.startswith("*"):
                     self._flush_current()
                     continue
@@ -90,18 +65,14 @@ class SerialReader(threading.Thread):
                     elif key_norm in {"PRES", "PRESSURE"}:
                         key_norm = "Pressure"
 
-                    # Only store known Libelium gas keys plus env keys if present
                     if key_norm in SENSOR_KEYS or key_norm in {"Temperature", "Humidity", "Pressure"}:
                         try:
                             self.current[key_norm] = float(value)
                         except ValueError:
                             pass  # ignore bad numeric
 
-                # Safety: flush occasionally even without separator
-                # (some sketches might not print stars every loop)
-                # Here, every ~10s if we have data
                 if self.current and len(self.current) >= 2:
-                    # do nothing; rely on explicit star unless stale
+
                     pass
 
             except Exception:
@@ -182,10 +153,8 @@ def format_for_csv(board_name: str, sample: Dict[str, float]) -> Dict[str, float
         out[prefix + "NO2 (ppm)"] = sample["NO2"]
     if "NH3" in sample:
         out[prefix + "NH3 (ppm)"] = sample["NH3"]
-    # O2 in percent per your requirement (0–25 % typical for charts)
     if "O2" in sample:
         out[prefix + "O2 (%)"] = sample["O2"]
-    # optional env if you print them later
     if "Temperature" in sample:
         out[prefix + "Temperature (C)"] = sample["Temperature"]
     if "Humidity" in sample:
