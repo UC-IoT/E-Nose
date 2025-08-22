@@ -1,1 +1,7 @@
 pandas
+numpy
+plotly
+dash
+pyserial
+firebase-admin
+python-dotenv

@@ -1,5 +1,7 @@
 .venv
 /Testing
+/Deployment
+/Experiment
 /Extras
 .DS_Store
 .vscode

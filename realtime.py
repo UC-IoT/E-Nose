@@ -1,9 +1,9 @@
+
 import os, re, threading, time, math
 from datetime import datetime, timedelta
 import pandas as pd
 import serial
 from dash import dcc, html, Input, Output, State
-from dash.dependencies import ALL
 import plotly.graph_objs as go
 
 import firebase_admin
@@ -36,8 +36,8 @@ if os.path.exists(BASELINE_FILE):
     print("[INFO] Baseline loaded:", BASELINE_VALUES)
 
 # === Globals ===
-LIVE_THREADS = {}
-LIVE_DATA = {}
+LIVE_THREADS = {}     
+LIVE_DATA = {}        
 RECORDING_PARAMS = {
     "recording": False,
     "stage": None,
@@ -49,7 +49,7 @@ RECORDING_PARAMS = {
     "csv_file": None,
     "folder": None
 }
-MERGED_BUFFER = []
+MERGED_BUFFER = []    
 
 # === Helpers ===
 def clean_text(text):
@@ -86,10 +86,8 @@ def push_to_firebase(stage, substance, data):
 
         timestamp_path = datetime.now().strftime("%H-%M-%S %d-%m-%Y")
         db.reference(f"{stage}/{substance}/{timestamp_path}").push(clean_data)
-
     except Exception as e:
         print("[FIREBASE ERROR]", e)
-
 
 # === Save merged CSV row ===
 def save_merged_row(timestamp):
@@ -114,7 +112,7 @@ def save_merged_row(timestamp):
     push_to_firebase(RECORDING_PARAMS["stage"], RECORDING_PARAMS["substance"], merged_row)
     MERGED_BUFFER = []
 
-# === Live Reader ===
+# === Reader: Standard board (B1/B2) ===
 def read_board(board_id, com_port):
     try:
         ser = serial.Serial(com_port, BAUD_RATE, timeout=1)
@@ -152,7 +150,7 @@ def read_board(board_id, com_port):
                                     continue
                                 safe_data[k] = v
                             MERGED_BUFFER.append(safe_data)
-                            if len(MERGED_BUFFER) >= len(LIVE_THREADS):
+                            if len(MERGED_BUFFER) >= len([t for t in LIVE_THREADS.values() if t.is_alive()]):
                                 save_merged_row(timestamp)
                             time.sleep(RECORDING_PARAMS["interval"])
 
@@ -185,8 +183,100 @@ def read_board(board_id, com_port):
 
                 current_data[f"{board_id} - {key.strip()}"] = val_clean
 
-        except:
+        except Exception:
             continue
+
+# === Reader: Libelium board (LB1/LB2) ===
+LIBELIUM_KEYS_ORDER = ["NO", "CO", "NO2", "NH3", "O2"]  
+
+def read_libelium(board_id, com_port):
+    """
+    Parse lines like:
+      NO: 0.12 ppm
+      CO: 1.23 ppm
+      ...
+      O2: 20.8 ppm(or % depending on config)
+    The Libelium sketch prints a separator; we'll treat seeing O2 as end-of-cycle.
+    """
+    try:
+        ser = serial.Serial(com_port, BAUD_RATE, timeout=1)
+        time.sleep(2)
+    except Exception as e:
+        print(f"[ERROR] Could not open {com_port}: {e}")
+        return
+
+    current = {}
+    seen_keys = set()
+    while True:
+        try:
+            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            if not line:
+                continue
+            line = clean_text(line)
+
+            
+            if set(line) == {"*"}:
+
+                if current:
+                    _flush_libelium_sample(board_id, current)
+                    current, seen_keys = {}, set()
+                continue
+
+
+            m = re.match(r"^\s*([A-Za-z0-9_]+)\s*:\s*([-+]?\d*\.?\d+)\s*([A-Za-z%/]+)?\s*$", line)
+            if not m:
+                continue
+
+            key, value, unit = m.groups()
+            key = key.strip()
+            try:
+                value = float(value)
+            except ValueError:
+                continue
+
+
+            unit = (unit or "ppm").lower()
+            if unit == "%":
+                colname = f"{board_id} - {key} (%)"
+            else:
+                colname = f"{board_id} - {key} ({unit})"
+
+            current[colname] = value
+            seen_keys.add(key.upper())
+
+
+            if key.upper() == "O2" or seen_keys.issuperset(set(LIBELIUM_KEYS_ORDER)):
+                _flush_libelium_sample(board_id, current)
+                current, seen_keys = {}, set()
+
+        except Exception:
+
+            time.sleep(0.2)
+            continue
+
+def _flush_libelium_sample(board_id, payload):
+    if not payload:
+        return
+    timestamp = datetime.now()
+    payload = dict(payload) 
+    payload["Timestamp"] = timestamp
+    LIVE_DATA.setdefault(board_id, []).append(payload)
+
+    one_min_ago = datetime.now() - timedelta(seconds=60)
+    LIVE_DATA[board_id] = [d for d in LIVE_DATA[board_id] if d["Timestamp"] >= one_min_ago]
+
+    if RECORDING_PARAMS["recording"]:
+        now = datetime.now()
+        if RECORDING_PARAMS["start_time"] is None:
+            RECORDING_PARAMS["start_time"] = now
+        elapsed = (now - RECORDING_PARAMS["start_time"]).total_seconds()
+        if elapsed <= RECORDING_PARAMS["duration"] * 60:
+
+            safe = {k: v for k, v in payload.items() if k != "Timestamp"}
+            MERGED_BUFFER.append(safe)
+            if len(MERGED_BUFFER) >= len([t for t in LIVE_THREADS.values() if t.is_alive()]):
+                save_merged_row(timestamp)
+            time.sleep(RECORDING_PARAMS["interval"])
 
 # === Layout ===
 def layout(nav):
@@ -194,12 +284,26 @@ def layout(nav):
         nav(),
         html.H3("Realtime Sensor Data", style={"textAlign": "center", "marginTop": "20px"}),
 
+        # ---inputs: B1, B2, LB1, LB2 ---
         html.Div([
-            html.Label("Number of Boards"),
-            dcc.Input(id="rt-nboards", type="number", min=1, value=1),
-            html.Div(id="rt-board-fields", style={"marginTop": "10px"}),
+            html.Div([
+                html.Label("B1 COM Port"),
+                dcc.Input(id="rt-b1-com", type="number", min=1, placeholder="e.g. 3"),
+                html.Br(), html.Br(),
 
-            html.Br(),
+                html.Label("B2 COM Port"),
+                dcc.Input(id="rt-b2-com", type="number", min=1, placeholder="e.g. 4"),
+                html.Br(), html.Br(),
+
+                html.Label("LB1 COM Port"),
+                dcc.Input(id="rt-lb1-com", type="number", min=1, placeholder="e.g. 5"),
+                html.Br(), html.Br(),
+
+                html.Label("LB2 COM Port"),
+                dcc.Input(id="rt-lb2-com", type="number", min=1, placeholder="e.g. 6"),
+                html.Br(), html.Br(),
+            ]),
+
             html.Button("Preview Live Data", id="rt-preview", n_clicks=0,
                         style={"background": "#007bff", "color": "white", "padding": "8px 25px",
                                "border": "none", "marginRight": "10px"}),
@@ -221,51 +325,43 @@ def layout(nav):
 # === Callbacks ===
 def register_callbacks(app):
     @app.callback(
-        Output("rt-board-fields", "children"),
-        Input("rt-nboards", "value")
-    )
-    def update_board_inputs(n):
-        if not n:
-            return []
-        return [html.Div([
-            html.Label(f"Board {i+1} ID"),
-            dcc.Dropdown(
-                options=[{"label": f"B{j}", "value": f"B{j}"} for j in range(1, 11)],
-                id={"type": "rt-board-id", "index": i},
-                placeholder="Select board"
-            ),
-            html.Label("COM Port"),
-            dcc.Input(type="number", min=1, placeholder="e.g. 3", id={"type": "rt-board-com", "index": i}),
-            html.Br(), html.Br()
-        ]) for i in range(n)]
-
-    @app.callback(
         Output("rt-active-boards", "data"),
         Output("rt-status", "children"),
         Input("rt-preview", "n_clicks"),
-        State({"type": "rt-board-id", "index": ALL}, "value"),
-        State({"type": "rt-board-com", "index": ALL}, "value"),
+        State("rt-b1-com", "value"),
+        State("rt-b2-com", "value"),
+        State("rt-lb1-com", "value"),
+        State("rt-lb2-com", "value"),
         prevent_initial_call=True
     )
-    def start_preview(n, boards, coms):
-        if not all(boards) or not all(coms):
-            return None, "Please enter all board IDs and COM ports."
+    def start_preview(_n, b1, b2, lb1, lb2):
+        requested = []
+        if b1: requested.append(("B1", f"COM{int(b1)}", "std"))
+        if b2: requested.append(("B2", f"COM{int(b2)}", "std"))
+        if lb1: requested.append(("LB1", f"COM{int(lb1)}", "lib"))
+        if lb2: requested.append(("LB2", f"COM{int(lb2)}", "lib"))
 
-        for board, com in zip(boards, coms):
-            if board not in LIVE_THREADS:
-                t = threading.Thread(target=read_board, args=(board, f"COM{int(com)}"), daemon=True)
+        if not requested:
+            return None, "Please enter at least one COM port."
+
+        started = []
+        for board, port, kind in requested:
+            if board not in LIVE_THREADS or not LIVE_THREADS[board].is_alive():
+                target = read_libelium if kind == "lib" else read_board
+                t = threading.Thread(target=target, args=(board, port), daemon=True)
                 LIVE_THREADS[board] = t
-                LIVE_DATA[board] = []
+                LIVE_DATA.setdefault(board, [])
                 t.start()
+            started.append(board)
 
-        return boards, f"Preview started for boards: {', '.join(boards)}"
+        return [b for b, _, _ in requested], f"Preview started for: {', '.join(started)}"
 
     @app.callback(
         Output("rt-controls", "children"),
         Input("rt-record", "n_clicks"),
         prevent_initial_call=True
     )
-    def show_recording_controls(n):
+    def show_recording_controls(_n):
         return html.Div([
             html.Label("Project Stage"),
             dcc.Dropdown(id="rt-stage", options=[{"label": s, "value": s} for s in PREFIX_MAP],
@@ -302,7 +398,7 @@ def register_callbacks(app):
         State("rt-interval-sec", "value"),
         prevent_initial_call=True
     )
-    def confirm_recording(n, stage, substance, flow, dur, inter):
+    def confirm_recording(_n, stage, substance, flow, dur, inter):
         if not all([stage, substance, flow, dur, inter]):
             return "Please complete all fields."
 
@@ -358,11 +454,11 @@ def register_callbacks(app):
                     y=df[col], mode="lines+markers", name="Live"
                 ))
 
-                # === Baseline overlay ===
+
                 if col in BASELINE_VALUES:
                     fig.add_trace(go.Scatter(
                         x=[0, 60], y=[BASELINE_VALUES[col], BASELINE_VALUES[col]],
-                        mode="lines", line=dict(color="grey", dash="dash"), name="Baseline"
+                        mode="lines", line=dict(dash="dash"), name="Baseline"
                     ))
 
                 fig.update_xaxes(range=[0, 60], tickvals=[0, 15, 30, 45, 60])
@@ -378,9 +474,3 @@ def register_callbacks(app):
                                        style={"width": "48%", "display": "inline-block", "margin": "1%"}))
 
         return graphs
-
-
-
-
-
-

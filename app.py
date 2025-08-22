@@ -4,7 +4,7 @@ import webbrowser
 from dash import Dash, dcc, html, Input, Output
 
 import write
-import read
+import read as read
 import realtime
 
 def nav():

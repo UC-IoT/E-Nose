@@ -1,197 +1,47 @@
-import os, re, threading, time
-from datetime import datetime, timedelta
+# write.py — Single tab that triggers both b_write and lb_write.
+import time
+from typing import Optional, Dict, List
 
-import pandas as pd
-import serial
-from dash import Dash, html, dcc, Input, Output, State
+from dash import html, dcc, Input, Output, State
 from dash.dependencies import ALL
 
-# === Configuration ===
-BAUD_RATE = 9600
-BASE_DIR = os.path.abspath(".")
+# Import the two engines
+import b_write
+import lb_write
+
 PREFIX_MAP = {"Testing": "T", "Experiment": "E", "Deployment": "D", "Baseline": "B"}
 
-# === Global Trackers ===
-CAPTURE_THREADS = {}
-CAPTURE_PROGRESS = {}
+def _board_row(board_id: str, default_baud_label: str):
+    # (Baud is fixed inside engines; only COM number needed here.)
+    return html.Div([
+        dcc.Checklist(
+            options=[{"label": f" Enable {board_id}", "value": "on"}],
+            value=[],
+            id={"type": "w-enable", "index": board_id},
+            style={"display": "inline-block", "width": "40%"}
+        ),
+        html.Span("COM", style={"marginRight": "6px"}),
+        dcc.Input(type="number", min=1, placeholder="e.g., 8",
+                  id={"type": "w-com", "index": board_id},
+                  style={"width": "90px"}),
+        html.Span(f"({default_baud_label})", style={"marginLeft": "10px", "color": "#666"})
+    ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginTop": "6px"})
 
-# === Utility Functions ===
-def clean_text(text):
-    return re.sub(r"[^\x00-\x7F°]", "", text)
-
-def extract_numeric(value):
-    return re.sub(r"[^\d\.]+", "", value)
-
-# === Data Capture Function ===
-def capture_data(stage, substance, flowrate, duration_minutes, interval_seconds,
-                 board_number, com_port, session_key):
-
-    folder_prefix = PREFIX_MAP.get(stage, "X")
-    
-    if stage == "Baseline":
-        folder = os.path.join("Baseline", "baseline")
-        substance = "baseline"
-    else:
-        folder = os.path.join(stage, substance.title())
-    
-    os.makedirs(folder, exist_ok=True)
-
-    run_no = len([
-        f for f in os.listdir(folder)
-        if f.lower().startswith((folder_prefix + substance).lower()) and f.endswith(".csv")
-    ]) + 1
-
-    serial_id = f"{run_no:04d}"
-    session_name = f"{folder_prefix}{substance}{serial_id}"
-    csv_file = os.path.join(folder, f"{session_name}.csv")
-    cumulative_file = os.path.join(folder, f"{substance}_Readings.csv")
-
-    try:
-        ser = serial.Serial(com_port, BAUD_RATE, timeout=2)
-        time.sleep(2)
-    except Exception as e:
-        print(f"[ERROR] Could not open {com_port}: {e}")
-        return
-
-    end_time = datetime.now() + timedelta(minutes=duration_minutes)
-    readings = []
-    current_data = {}
-    group = "General"
-    capturing = False
-
-    while datetime.now() < end_time:
-        try:
-            line = ser.readline().decode("utf-8", errors="ignore").strip()
-            if not line:
-                continue
-            line = clean_text(line)
-
-            if line == "New Data":
-                if current_data:
-                    current_data["Timestamp"] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                    current_data["Flowrate (L/min)"] = flowrate
-                    readings.append(current_data)
-                    current_data = {}
-                    time.sleep(interval_seconds)
-
-                capturing = True
-                group = "General"
-                elapsed = (datetime.now() - (end_time - timedelta(minutes=duration_minutes))).total_seconds()
-                CAPTURE_PROGRESS[session_key] = min(100, int(elapsed / (duration_minutes * 60) * 100))
-                continue
-
-            if not capturing:
-                continue
-
-            if line.startswith("Reading "):
-                group = line.replace("Reading", "").replace("...", "").strip()
-                continue
-
-            parts = [p.strip() for p in line.replace(":", ": ").split(":", maxsplit=2)]
-
-            if len(parts) == 3:
-                key, val1, val2 = parts
-                if any(u in val1 for u in ("ppm", "ppb", "%", "°C", "KPa", "Kohms")):
-                    unit_match = re.search(r"(ppm|ppb|%|°C|KPa|Kohms)", val1)
-                    if unit_match:
-                        unit = unit_match.group(1)
-                        colname_val = f"{board_number} - {group} - {key} - {unit}"
-                        colname_volt = f"{board_number} - {group} - {key} - V"
-                        current_data[colname_val] = val1
-                        current_data[colname_volt] = extract_numeric(val2)
-                else:
-                    current_data[f"{board_number} - {group} - {key} - raw"] = f"{val1}:{val2}"
-
-            elif len(parts) == 2:
-                key, val = parts
-                key = clean_text(key)
-                val = clean_text(val)
-                if val.endswith("V"):
-                    try:
-                        colname = f"{board_number} - {group} - {key} - V"
-                        current_data[colname] = float(val.replace("V", "").strip())
-                    except ValueError:
-                        current_data[f"{board_number} - {group} - {key} - raw"] = val
-                else:
-                    current_data[f"{board_number} - {group} - {key} - raw"] = val
-        except Exception as err:
-            print(f"[ERROR] {err}")
-            continue
-
-    ser.close()
-    CAPTURE_PROGRESS[session_key] = 100
-
-    if not readings:
-        print(f"[INFO] No data recorded from {board_number}.")
-        return
-
-    if "MERGED_DATA" not in CAPTURE_PROGRESS:
-        CAPTURE_PROGRESS["MERGED_DATA"] = {}
-
-    CAPTURE_PROGRESS["MERGED_DATA"][board_number] = readings
-
-    all_done = all(progress == 100 for key, progress in CAPTURE_PROGRESS.items()
-                   if key != "MERGED_DATA")
-
-    if not all_done:
-        return
-
-    combined_rows = []
-    board_data = CAPTURE_PROGRESS["MERGED_DATA"]
-    max_len = max(len(r) for r in board_data.values())
-
-    for i in range(max_len):
-        row = {}
-        for b, board_readings in board_data.items():
-            if i < len(board_readings):
-                row.update(board_readings[i])
-        combined_rows.append(row)
-
-    df = pd.DataFrame(combined_rows)
-    ordered_cols = ["Timestamp", "Flowrate (L/min)"] + \
-                   [c for c in df.columns if c not in ["Timestamp", "Flowrate (L/min)"]]
-    df = df[ordered_cols]
-
-    df.columns = [clean_text(c).replace("Â", "").strip() for c in df.columns]
-
-    df.to_csv(csv_file, index=False, encoding="utf-8-sig")
-
-    if os.path.exists(cumulative_file):
-        df.to_csv(cumulative_file, mode="a", index=False, header=False, encoding="utf-8-sig")
-    else:
-        df.to_csv(cumulative_file, index=False, encoding="utf-8-sig")
-
-    print(f"[✓] Session saved: {csv_file}")
-    print(f"[✓] Cumulative updated: {cumulative_file}")
-
-# === Thread Start Wrapper ===
-def start_capture_thread(**kwargs):
-    now = datetime.now().isoformat()
-    key = "|".join(str(kwargs[k]) for k in ("stage", "substance", "board_number", "com_port")) + "|" + now
-    if key in CAPTURE_THREADS and CAPTURE_THREADS[key].is_alive():
-        return key
-    t = threading.Thread(target=capture_data, kwargs={**kwargs, "session_key": key}, daemon=True)
-    CAPTURE_THREADS[key] = t
-    CAPTURE_PROGRESS[key] = 0
-    t.start()
-    return key
-
-# === UI Layout ===
 def layout(nav):
     return html.Div([
         nav(),
-        html.H3("Capture data from multiple boards", style={"textAlign": "center", "marginTop": "25px"}),
+        html.H3("Write Data (starts both B and LB engines)", style={"textAlign": "center", "marginTop": "20px"}),
+
         html.Div([
             html.Label("Project Stage"),
-            dcc.Dropdown(id="w-stage",
-                         options=[{"label": s, "value": s} for s in PREFIX_MAP],
+            dcc.Dropdown(id="w-stage", options=[{"label": s, "value": s} for s in PREFIX_MAP],
                          placeholder="Select stage"),
 
             html.Br(),
-            html.Div(id="substance-field"),
+            html.Div(id="w-substance-wrap"),
 
             html.Label("Flow-rate (L/min)"),
-            dcc.Input(id="w-flow", type="number", min=1, max=5, step=0.1),
+            dcc.Input(id="w-flow", type="number", min=0.1, step=0.1),
 
             html.Br(), html.Br(),
             html.Label("Duration (minutes)"),
@@ -199,41 +49,44 @@ def layout(nav):
 
             html.Br(), html.Br(),
             html.Label("Interval between readings (s)"),
-            dcc.Input(id="w-interval", type="number", min=0.1, step=0.1, value=1),
+            dcc.Input(id="w-interval", type="number", min=0.2, step=0.2, value=1.0),
 
-            html.Br(), html.Br(),
-            html.Label("Number of boards"),
-            dcc.Input(id="w-nboards", type="number", min=1, max=10, value=2),
+            html.Hr(),
+            html.H4("Boards"),
+            _board_row("B1", "Arduino"),
+            _board_row("B2", "Arduino"),
+            _board_row("LB1", "Libelium"),
+            _board_row("LB2", "Libelium"),
 
-            html.Br(), html.Br(),
-            html.Div(id="board-fields"),
+            html.Br(),
+            html.Button("Start Capture", id="w-start", n_clicks=0,
+                        style={"background": "#28a745", "color": "white", "padding": "8px 22px", "border": "none"}),
+            html.Button("Stop", id="w-stop", n_clicks=0,
+                        style={"background": "#dc3545", "color": "white", "padding": "8px 22px",
+                               "border": "none", "marginLeft": "10px"}),
 
-            html.Button("Start Multi-Board Capture", id="w-start", n_clicks=0,
-                        style={"background": "#28a745", "color": "white", "padding": "8px 25px",
-                               "border": "none", "marginTop": "20px"}),
-
-            html.Div(id="w-status", style={"marginTop": "25px", "fontWeight": "bold"}),
+            html.Div(id="w-status", style={"marginTop": "15px", "fontWeight": "bold"}),
 
             html.Div([
-                html.Div(id="progress-fill",
-                         style={"height": "25px", "width": "0%", "background": "#28a745",
-                                "color": "white", "textAlign": "center"}),
+                html.Div(id="w-progress-fill",
+                         style={"height": "22px", "width": "0%", "background": "#28a745",
+                                "color": "white", "textAlign": "center", "fontSize": "12px"})
+            ], id="w-progress-container",
+               style={"width": "100%", "background": "#e9ecef", "marginTop": "10px", "display": "none"}),
 
-            ], id="progress-container",
-                style={"width": "100%", "background": "#ddd", "marginTop": "10px", "display": "none"}),
+            html.Div(id="w-board-status", style={"marginTop": "10px", "fontFamily": "monospace", "whiteSpace": "pre-wrap"})
+        ], style={"maxWidth": "560px", "margin": "auto"}),
 
-            dcc.Interval(id="progress-interval", interval=1000, n_intervals=0),
-            dcc.Store(id="w-session"),
-        ], style={"maxWidth": "420px", "margin": "auto"})
+        dcc.Interval(id="w-tick", interval=750, n_intervals=0),
+        dcc.Store(id="w-session")  # we just store a flag that it's running
     ])
 
-# === Callbacks ===
 def register_callbacks(app):
     @app.callback(
-        Output("substance-field", "children"),
+        Output("w-substance-wrap", "children"),
         Input("w-stage", "value")
     )
-    def show_substance_input(stage):
+    def _substance_field(stage):
         if stage == "Baseline":
             return html.Div()
         return html.Div([
@@ -243,71 +96,103 @@ def register_callbacks(app):
         ])
 
     @app.callback(
-        Output("board-fields", "children"),
-        Input("w-nboards", "value")
-    )
-    def update_board_inputs(n):
-        if not n or n < 1:
-            return []
-        return [html.Div([
-            html.Label(f"Board {i + 1} ID"),
-            dcc.Dropdown(
-                options=[{"label": f"B{j}", "value": f"B{j}"} for j in range(1, 11)],
-                id={"type": "board-id", "index": i},
-                placeholder="Select board"
-            ),
-            html.Label("COM Port"),
-            dcc.Input(type="number", min=1, placeholder="e.g. 3", id={"type": "board-com", "index": i}),
-            html.Br(), html.Br()
-        ]) for i in range(n)]
-
-    @app.callback(
         Output("w-status", "children"),
+        Output("w-progress-container", "style"),
         Output("w-session", "data"),
-        Output("progress-container", "style"),
         Input("w-start", "n_clicks"),
         State("w-stage", "value"),
         State("w-substance", "value"),
         State("w-flow", "value"),
         State("w-duration", "value"),
         State("w-interval", "value"),
-        State({"type": "board-id", "index": ALL}, "value"),
-        State({"type": "board-com", "index": ALL}, "value"),
+        State({"type": "w-enable", "index": ALL}, "value"),
+        State({"type": "w-enable", "index": ALL}, "id"),
+        State({"type": "w-com", "index": ALL}, "value"),
+        State({"type": "w-com", "index": ALL}, "id"),
         prevent_initial_call=True
     )
-    def start_multi_capture(n, stage, sub, flow, dur, inter, boards, coms):
-        if not all([stage, flow, dur, inter]) or not all(boards) or not all(coms):
-            return "Please complete all fields.", None, {"display": "none"}
+    def _start(_n, stage, substance, flow, dur_min, inter_s,
+               enabled_vals, enabled_ids, com_vals, com_ids):
+        if not all([stage, flow, dur_min, inter_s]):
+            return "Please complete stage, flow-rate, duration and interval.", {"display": "none"}, None
+        if stage != "Baseline" and not (substance and substance.strip()):
+            return "Substance is required for non-Baseline stages.", {"display": "none"}, None
 
-        if stage != "Baseline" and not sub:
-            return "Substance is required for non-Baseline stages.", None, {"display": "none"}
+        # enabled & COMs
+        enabled_map = {e["index"]: ("on" in v) for v, e in zip(enabled_vals, enabled_ids)}
+        com_map = {e["index"]: (f"COM{int(v)}" if v else None) for v, e in zip(com_vals, com_ids)}
 
-        sub = sub.title() if sub else "baseline"
-        keys = []
-        for board, com in zip(boards, coms):
-            k = start_capture_thread(stage=stage, substance=sub, flowrate=float(flow),
-                                     duration_minutes=float(dur), interval_seconds=float(inter),
-                                     board_number=board, com_port=f"COM{int(com)}")
-            keys.append(k)
-        return f"Capture started on boards: {', '.join(boards)}", keys, {
-            "width": "100%", "background": "#ddd", "marginTop": "10px"
-        }
+        ports_b = {b: (com_map.get(b) if enabled_map.get(b) else None) for b in ("B1", "B2")}
+        ports_lb = {b: (com_map.get(b) if enabled_map.get(b) else None) for b in ("LB1", "LB2")}
+
+        if not any(ports_b.values()) and not any(ports_lb.values()):
+            return "Please enable at least one board and provide its COM port.", {"display": "none"}, None
+
+        # Start engines
+        duration_sec = int(float(dur_min) * 60)
+        flow = float(flow); inter = float(inter_s)
+        sub = None if stage == "Baseline" else substance.title()
+
+        if any(ports_b.values()):
+            b_write.start_capture(stage=stage, substance=sub, flowrate=flow,
+                                  duration_sec=duration_sec, interval=inter, ports=ports_b)
+        if any(ports_lb.values()):
+            lb_write.start_capture(stage=stage, substance=sub, flowrate=flow,
+                       interval=inter, ports=ports_lb, duration_sec=duration_sec)
+
+        extra = ""
+        if any(ports_lb.values()):
+            extra = " (LB will write after warm‑up ~2m30s)"
+        status = f"Capture started. B: {', '.join([k for k,v in ports_b.items() if v]) or '-'}; " \
+                 f"LB: {', '.join([k for k,v in ports_lb.items() if v]) or '-'}{extra}"
+        return status, {"width": "100%", "background": "#e9ecef", "marginTop": "10px"}, {"running": True}
 
     @app.callback(
-        Output("progress-fill", "style"),
-        Input("progress-interval", "n_intervals"),
+        Output("w-progress-fill", "style"),
+        Output("w-board-status", "children"),
+        Input("w-tick", "n_intervals"),
         State("w-session", "data"),
         prevent_initial_call=True
     )
-    def update_progress_bar(_n, keys):
-        if not keys:
-            return {"display": "none"}
-        avg = sum(CAPTURE_PROGRESS.get(k, 0) for k in keys) / len(keys)
-        return {
-            "height": "25px",
-            "width": f"{avg:.2f}%",
+    def _tick(_n, sess):
+        if not sess or not sess.get("running"):
+            return {"display": "none"}, ""
+
+        b_snap = b_write.snapshot()
+        lb_snap = lb_write.snapshot()
+
+        # Progress tied to FIRST B reading
+        pct = b_snap.get("pct", 0) or 0
+        style = {
+            "height": "22px",
+            "width": f"{pct}%",
             "background": "#28a745",
             "color": "white",
             "textAlign": "center",
+            "fontSize": "12px",
             "display": "block"
         }
+        if b_snap.get("first_read_epoch") is None:
+            # waiting for first B reading — keep bar at 0%
+            style["width"] = "0%"
+
+        # Build status text (B then LB)
+        lines: List[str] = []
+        # If first read not yet seen, say so
+        if b_snap.get("first_read_epoch") is None:
+            lines.append("B-family: waiting for first reading...")
+        lines.extend(b_snap.get("status_lines", []))
+        lines.extend(lb_snap.get("status_lines", []))
+
+        return style, "\n".join([ln for ln in lines if ln])
+
+    @app.callback(
+        Output("w-status", "children", allow_duplicate=True),
+        Input("w-stop", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def _stop(_n):
+        b_write.stop_capture()
+        lb_write.stop_capture()
+        return "Stopped capture for B and LB."
+
