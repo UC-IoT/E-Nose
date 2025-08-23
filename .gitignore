@@ -9,3 +9,6 @@
 __pycache__
 test.py
 .idea
+serviceAccountKey.json
+.env
+encoded.txt
