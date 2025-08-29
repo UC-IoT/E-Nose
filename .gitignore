@@ -2,5 +2,14 @@
 /Testing
 .DS_Store
 .vscode
+/Deployment
+/Experiment
+/Extras
+.DS_Store
+.vscode
 *.txt
 __pycache__
+test.py
+*.idea
+*.json
+.env

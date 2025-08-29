@@ -79,7 +79,6 @@ void BME680Setup()
 }
 
 void SGP41Setup()
-
 {
   Serial.println("Initiating SGP41...");
   while (!Serial)
