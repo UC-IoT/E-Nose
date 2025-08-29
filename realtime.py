@@ -1,476 +1,447 @@
+#realtime.py
 
-import os, re, threading, time, math
-from datetime import datetime, timedelta
+
+import os, re, json, threading, time
+from datetime import datetime
+from typing import Dict, Optional, List, Tuple
+
 import pandas as pd
 import serial
 from dash import dcc, html, Input, Output, State
+from dash.dependencies import ALL
 import plotly.graph_objs as go
 
-import firebase_admin
-from firebase_admin import credentials, db
-from dotenv import load_dotenv
-load_dotenv()
+import b_write
+import lb_write
 
-# === Firebase Setup ===
-BASE_DIR = os.path.abspath(".")
-service_key_path = os.path.join(BASE_DIR, "serviceAccountKey.json")
-
-if not firebase_admin._apps:
-    cred = credentials.Certificate(service_key_path)
-    firebase_admin.initialize_app(cred, {
-        'databaseURL': os.getenv("databaseURL")
-    })
-
-# === Config ===
-BAUD_RATE = 9600
 PREFIX_MAP = {"Testing": "T", "Experiment": "E", "Deployment": "D", "Baseline": "B"}
-BASELINE_FILE = os.path.join("Baseline", "baseline.csv")
+BAUD_ARDUINO = 9600
 
-# === Load Baseline ===
-BASELINE_VALUES = {}
-if os.path.exists(BASELINE_FILE):
-    baseline_df = pd.read_csv(BASELINE_FILE)
-    for col in baseline_df.columns:
-        if col != "Timestamp":
-            BASELINE_VALUES[col] = baseline_df[col].iloc[0]
-    print("[INFO] Baseline loaded:", BASELINE_VALUES)
+_PREVIEW_THREADS: Dict[str, Tuple[threading.Thread, threading.Event]] = {}
+_LIVE_DATA: Dict[str, List[dict]] = {"B1": [], "B2": []}
 
-# === Globals ===
-LIVE_THREADS = {}     
-LIVE_DATA = {}        
-RECORDING_PARAMS = {
-    "recording": False,
-    "stage": None,
-    "substance": None,
-    "flow": None,
-    "duration": None,
-    "interval": None,
-    "start_time": None,
-    "csv_file": None,
-    "folder": None
-}
-MERGED_BUFFER = []    
+def _clean_text(s: str) -> str:
+    return re.sub(r"[^\x00-\x7F°]", "", s or "")
 
-# === Helpers ===
-def clean_text(text):
-    return re.sub(r"[^\x00-\x7F°]", "", text)
+def _extract_numeric(value: str) -> str:
+    return re.sub(r"[^\d\.]+", "", value or "")
 
-def extract_numeric(value):
-    return re.sub(r"[^\d\.]+", "", value)
+def _stage_letter(stage: str) -> str:
+    return PREFIX_MAP.get(stage, "X")
 
-def get_file_paths(stage, substance):
-    folder_prefix = PREFIX_MAP.get(stage, "X")
-    timestamp_folder = datetime.now().strftime("%H-%M-%S %d-%m-%Y")
-    folder = os.path.join(stage, substance.title(), timestamp_folder)
-    os.makedirs(folder, exist_ok=True)
+def _make_test_id(stage: str, substance: Optional[str]) -> str:
+    sub = "baseline" if stage == "Baseline" else (substance or "").title()
+    return f"{_stage_letter(stage)}_{sub}_{datetime.now().strftime('%H-%M-%S %d-%m-%Y')}"
 
-    run_no = len([f for f in os.listdir(folder) if f.endswith(".csv")]) + 1
-    serial_id = f"{run_no:04d}"
-    session_name = f"{folder_prefix}{substance}{serial_id}"
-    csv_file = os.path.join(folder, f"{session_name}.csv")
-    cumulative_file = os.path.join(folder, f"{substance}_Readings.csv")
-    return folder, csv_file, cumulative_file
-
-def push_to_firebase(stage, substance, data):
+def _prime_firebase() -> str:
     try:
-        clean_data = {}
-        for k, v in data.items():
-            if isinstance(v, datetime):
-                clean_data[k] = v.strftime("%Y-%m-%d %H:%M:%S")
-            elif hasattr(v, "item"):
-                clean_data[k] = v.item()
-            elif v is None or (isinstance(v, float) and math.isnan(v)):
-                clean_data[k] = None
-            else:
-                clean_data[k] = v
+        import firebase_admin
+        from firebase_admin import credentials
 
-        timestamp_path = datetime.now().strftime("%H-%M-%S %d-%m-%Y")
-        db.reference(f"{stage}/{substance}/{timestamp_path}").push(clean_data)
+        if firebase_admin._apps:
+            return "online"
+
+        db_url = os.getenv("DATABASE_URL") or os.getenv("databaseURL")
+        if not db_url:
+            return "offline: no DATABASE_URL"
+
+        key_blob = os.getenv("FIREBASE_KEY")
+        if key_blob:
+            svc = json.loads(key_blob)
+            if "private_key" in svc and isinstance(svc["private_key"], str):
+
+                svc["private_key"] = svc["private_key"].replace("\\n", "\n")
+            cred = credentials.Certificate(svc)
+        else:
+            key_path = (
+                os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+                or os.getenv("FIREBASE_CREDENTIALS_PATH")
+                or "serviceAccountKey.json"
+            )
+            cred = credentials.Certificate(key_path)
+
+        firebase_admin.initialize_app(cred, {"databaseURL": db_url})
+        print("[Firebase] Initialized (realtime)")
+        return "online"
     except Exception as e:
-        print("[FIREBASE ERROR]", e)
+        print(f"[Firebase init error (realtime)] {e}")
+        return f"offline: {e}"
 
-# === Save merged CSV row ===
-def save_merged_row(timestamp):
-    global MERGED_BUFFER
-    if not MERGED_BUFFER:
-        return
-
-    merged_row = {"Timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S")}
-    for board_data in MERGED_BUFFER:
-        merged_row.update(board_data)
-
-    df = pd.DataFrame([merged_row])
-    header = not os.path.exists(RECORDING_PARAMS["csv_file"])
-    df.to_csv(RECORDING_PARAMS["csv_file"], mode="a", index=False,
-              encoding="utf-8-sig", header=header)
-
-    cumulative_file = os.path.join(RECORDING_PARAMS["folder"],
-                                   f"{RECORDING_PARAMS['substance']}_Readings.csv")
-    df.to_csv(cumulative_file, mode="a", index=False,
-              encoding="utf-8-sig", header=not os.path.exists(cumulative_file))
-
-    push_to_firebase(RECORDING_PARAMS["stage"], RECORDING_PARAMS["substance"], merged_row)
-    MERGED_BUFFER = []
-
-# === Reader: Standard board (B1/B2) ===
-def read_board(board_id, com_port):
+#B1/B2 live preview
+def _b_preview_reader(board_id: str, com_port: str, stop_evt: threading.Event):
+    ser = None
     try:
-        ser = serial.Serial(com_port, BAUD_RATE, timeout=1)
-        time.sleep(2)
+        ser = serial.Serial(com_port, BAUD_ARDUINO, timeout=1)
+        time.sleep(1.5)
+        print(f"[Preview] {board_id} opened {com_port}")
     except Exception as e:
-        print(f"[ERROR] Could not open {com_port}: {e}")
-        return
-
-    current_data = {}
-    while True:
-        try:
-            line = ser.readline().decode("utf-8", errors="ignore").strip()
-            if not line:
-                continue
-            line = clean_text(line)
-
-            if line == "New Data":
-                if current_data:
-                    timestamp = datetime.now()
-                    current_data["Timestamp"] = timestamp
-                    LIVE_DATA.setdefault(board_id, []).append(current_data.copy())
-
-                    one_min_ago = datetime.now() - timedelta(seconds=60)
-                    LIVE_DATA[board_id] = [d for d in LIVE_DATA[board_id] if d["Timestamp"] >= one_min_ago]
-
-                    if RECORDING_PARAMS["recording"]:
-                        now = datetime.now()
-                        if RECORDING_PARAMS["start_time"] is None:
-                            RECORDING_PARAMS["start_time"] = now
-                        elapsed = (now - RECORDING_PARAMS["start_time"]).total_seconds()
-                        if elapsed <= RECORDING_PARAMS["duration"] * 60:
-                            safe_data = {}
-                            for k, v in current_data.items():
-                                if k == "Timestamp":
-                                    continue
-                                safe_data[k] = v
-                            MERGED_BUFFER.append(safe_data)
-                            if len(MERGED_BUFFER) >= len([t for t in LIVE_THREADS.values() if t.is_alive()]):
-                                save_merged_row(timestamp)
-                            time.sleep(RECORDING_PARAMS["interval"])
-
-                current_data = {}
-                continue
-
-            parts = [p.strip() for p in line.split(":", maxsplit=1)]
-            if len(parts) == 2:
-                key, val = parts
-                val_clean = val.strip()
-
-                # ppm/ppb values
-                match = re.search(r"([\d\.]+)\s*(ppm|ppb)", val_clean, re.IGNORECASE)
-                if match:
-                    value = float(match.group(1))
-                    unit = match.group(2).lower()
-                    colname = f"{board_id} - {key.strip()} ({unit})"
-                    current_data[colname] = value
-                    continue
-
-                # Raw sensors
-                if re.match(r"^(TGS|MQ)", key.strip(), re.IGNORECASE):
-                    try:
-                        value = float(extract_numeric(val_clean))
-                        colname = f"{board_id} - {key.strip()} (raw)"
-                        current_data[colname] = value
-                    except:
-                        pass
-                    continue
-
-                current_data[f"{board_id} - {key.strip()}"] = val_clean
-
-        except Exception:
-            continue
-
-# === Reader: Libelium board (LB1/LB2) ===
-LIBELIUM_KEYS_ORDER = ["NO", "CO", "NO2", "NH3", "O2"]  
-
-def read_libelium(board_id, com_port):
-    """
-    Parse lines like:
-      NO: 0.12 ppm
-      CO: 1.23 ppm
-      ...
-      O2: 20.8 ppm(or % depending on config)
-    The Libelium sketch prints a separator; we'll treat seeing O2 as end-of-cycle.
-    """
-    try:
-        ser = serial.Serial(com_port, BAUD_RATE, timeout=1)
-        time.sleep(2)
-    except Exception as e:
-        print(f"[ERROR] Could not open {com_port}: {e}")
+        print(f"[Preview ERROR] Could not open {com_port} for {board_id}: {e}")
         return
 
     current = {}
-    seen_keys = set()
-    while True:
-        try:
-            line = ser.readline().decode("utf-8", errors="ignore").strip()
+    try:
+        while not stop_evt.is_set():
+            try:
+                raw = ser.readline().decode("utf-8", errors="ignore")
+            except Exception:
+                time.sleep(0.1); continue
+
+            line = _clean_text((raw or "").strip())
             if not line:
                 continue
-            line = clean_text(line)
 
-            
-            if set(line) == {"*"}:
-
+            if line == "New Data":
                 if current:
-                    _flush_libelium_sample(board_id, current)
-                    current, seen_keys = {}, set()
+                    row = {"Timestamp": datetime.now()}
+                    row.update(current)
+                    _LIVE_DATA.setdefault(board_id, []).append(row)
+                current = {}
                 continue
 
+            parts = [p.strip() for p in line.split(":", maxsplit=1)]
+            if len(parts) != 2:
+                continue
+            key, val = parts
+            val_clean = val.strip()
 
-            m = re.match(r"^\s*([A-Za-z0-9_]+)\s*:\s*([-+]?\d*\.?\d+)\s*([A-Za-z%/]+)?\s*$", line)
-            if not m:
+            m = re.search(r"([\d\.]+)\s*(ppm|ppb|%)", val_clean, re.IGNORECASE)
+            if m:
+                value = float(m.group(1)); unit = m.group(2).lower()
+                current[f"{board_id} - {key.strip()} ({unit})"] = value
                 continue
 
-            key, value, unit = m.groups()
-            key = key.strip()
-            try:
-                value = float(value)
-            except ValueError:
+            if re.match(r"^(TGS|MQ)", key.strip(), re.IGNORECASE):
+                try:
+                    value = float(_extract_numeric(val_clean))
+                    current[f"{board_id} - {key.strip()} (raw)"] = value
+                except Exception:
+                    pass
                 continue
 
+            if val_clean.endswith("V"):
+                try:
+                    v = float(val_clean[:-1].strip())
+                    current[f"{board_id} - {key.strip()} - V"] = v
+                    continue
+                except Exception:
+                    pass
 
-            unit = (unit or "ppm").lower()
-            if unit == "%":
-                colname = f"{board_id} - {key} (%)"
-            else:
-                colname = f"{board_id} - {key} ({unit})"
-
-            current[colname] = value
-            seen_keys.add(key.upper())
-
-
-            if key.upper() == "O2" or seen_keys.issuperset(set(LIBELIUM_KEYS_ORDER)):
-                _flush_libelium_sample(board_id, current)
-                current, seen_keys = {}, set()
-
+            current[f"{board_id} - {key.strip()}"] = val_clean
+    finally:
+        try:
+            if ser and ser.is_open:
+                ser.close()
+                print(f"[Preview] {board_id} closed {com_port}")
         except Exception:
+            pass
 
-            time.sleep(0.2)
-            continue
+def _board_row(board_id: str, default_baud_label: str):
+    return html.Div([
+        dcc.Checklist(
+            options=[{"label": f" Enable {board_id}", "value": "on"}],
+            value=[],
+            id={"type": "rt-enable", "index": board_id},
+            style={"display": "inline-block", "width": "40%"}
+        ),
+        html.Span("COM", style={"marginRight": "6px"}),
+        dcc.Input(type="number", min=1, placeholder="e.g., 8",
+                  id={"type": "rt-com", "index": board_id},
+                  style={"width": "90px"}),
+        html.Span(f"({default_baud_label})", style={"marginLeft": "10px", "color": "#666"})
+    ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginTop": "6px"})
 
-def _flush_libelium_sample(board_id, payload):
-    if not payload:
-        return
-    timestamp = datetime.now()
-    payload = dict(payload) 
-    payload["Timestamp"] = timestamp
-    LIVE_DATA.setdefault(board_id, []).append(payload)
-
-    one_min_ago = datetime.now() - timedelta(seconds=60)
-    LIVE_DATA[board_id] = [d for d in LIVE_DATA[board_id] if d["Timestamp"] >= one_min_ago]
-
-    if RECORDING_PARAMS["recording"]:
-        now = datetime.now()
-        if RECORDING_PARAMS["start_time"] is None:
-            RECORDING_PARAMS["start_time"] = now
-        elapsed = (now - RECORDING_PARAMS["start_time"]).total_seconds()
-        if elapsed <= RECORDING_PARAMS["duration"] * 60:
-
-            safe = {k: v for k, v in payload.items() if k != "Timestamp"}
-            MERGED_BUFFER.append(safe)
-            if len(MERGED_BUFFER) >= len([t for t in LIVE_THREADS.values() if t.is_alive()]):
-                save_merged_row(timestamp)
-            time.sleep(RECORDING_PARAMS["interval"])
-
-# === Layout ===
+# ---------- Layout ----------
 def layout(nav):
     return html.Div([
         nav(),
-        html.H3("Realtime Sensor Data", style={"textAlign": "center", "marginTop": "20px"}),
+        html.H3("Live Data (B1/B2 graphs) + Capture (B & LB engines)",
+                style={"textAlign": "center", "marginTop": "20px"}),
 
-        # ---inputs: B1, B2, LB1, LB2 ---
         html.Div([
-            html.Div([
-                html.Label("B1 COM Port"),
-                dcc.Input(id="rt-b1-com", type="number", min=1, placeholder="e.g. 3"),
-                html.Br(), html.Br(),
-
-                html.Label("B2 COM Port"),
-                dcc.Input(id="rt-b2-com", type="number", min=1, placeholder="e.g. 4"),
-                html.Br(), html.Br(),
-
-                html.Label("LB1 COM Port"),
-                dcc.Input(id="rt-lb1-com", type="number", min=1, placeholder="e.g. 5"),
-                html.Br(), html.Br(),
-
-                html.Label("LB2 COM Port"),
-                dcc.Input(id="rt-lb2-com", type="number", min=1, placeholder="e.g. 6"),
-                html.Br(), html.Br(),
-            ]),
-
-            html.Button("Preview Live Data", id="rt-preview", n_clicks=0,
-                        style={"background": "#007bff", "color": "white", "padding": "8px 25px",
-                               "border": "none", "marginRight": "10px"}),
-
-            html.Button("Start Recording", id="rt-record", n_clicks=0,
-                        style={"background": "#28a745", "color": "white", "padding": "8px 25px", "border": "none"}),
-
-            html.Div(id="rt-controls", style={"marginTop": "15px"}),
-
-            html.Div(id="rt-status", style={"marginTop": "15px", "fontWeight": "bold"}),
-        ], style={"maxWidth": "500px", "margin": "auto"}),
-
-        html.Div(id="rt-graphs", style={"marginTop": "30px"}),
-
-        dcc.Interval(id="rt-interval", interval=2000, n_intervals=0),
-        dcc.Store(id="rt-active-boards"),
-    ])
-
-# === Callbacks ===
-def register_callbacks(app):
-    @app.callback(
-        Output("rt-active-boards", "data"),
-        Output("rt-status", "children"),
-        Input("rt-preview", "n_clicks"),
-        State("rt-b1-com", "value"),
-        State("rt-b2-com", "value"),
-        State("rt-lb1-com", "value"),
-        State("rt-lb2-com", "value"),
-        prevent_initial_call=True
-    )
-    def start_preview(_n, b1, b2, lb1, lb2):
-        requested = []
-        if b1: requested.append(("B1", f"COM{int(b1)}", "std"))
-        if b2: requested.append(("B2", f"COM{int(b2)}", "std"))
-        if lb1: requested.append(("LB1", f"COM{int(lb1)}", "lib"))
-        if lb2: requested.append(("LB2", f"COM{int(lb2)}", "lib"))
-
-        if not requested:
-            return None, "Please enter at least one COM port."
-
-        started = []
-        for board, port, kind in requested:
-            if board not in LIVE_THREADS or not LIVE_THREADS[board].is_alive():
-                target = read_libelium if kind == "lib" else read_board
-                t = threading.Thread(target=target, args=(board, port), daemon=True)
-                LIVE_THREADS[board] = t
-                LIVE_DATA.setdefault(board, [])
-                t.start()
-            started.append(board)
-
-        return [b for b, _, _ in requested], f"Preview started for: {', '.join(started)}"
-
-    @app.callback(
-        Output("rt-controls", "children"),
-        Input("rt-record", "n_clicks"),
-        prevent_initial_call=True
-    )
-    def show_recording_controls(_n):
-        return html.Div([
             html.Label("Project Stage"),
-            dcc.Dropdown(id="rt-stage", options=[{"label": s, "value": s} for s in PREFIX_MAP],
+            dcc.Dropdown(id="rt-stage",
+                         options=[{"label": s, "value": s} for s in PREFIX_MAP],
                          placeholder="Select stage"),
 
             html.Br(),
-            html.Label("Substance"),
-            dcc.Input(id="rt-substance", type="text", placeholder="e.g. Ethanol"),
+            html.Div(id="rt-substance-wrap"),
 
-            html.Br(), html.Br(),
             html.Label("Flow-rate (L/min)"),
-            dcc.Input(id="rt-flow", type="number", min=1, max=5, step=0.1),
+            dcc.Input(id="rt-flow", type="number", min=0.1, step=0.1),
 
             html.Br(), html.Br(),
             html.Label("Duration (minutes)"),
             dcc.Input(id="rt-duration", type="number", min=0.1, step=0.1),
 
             html.Br(), html.Br(),
-            html.Label("Interval (seconds)"),
-            dcc.Input(id="rt-interval-sec", type="number", min=0.1, step=0.1, value=1),
+            html.Label("Interval between readings (s)"),
+            dcc.Input(id="rt-interval", type="number", min=0.2, step=0.2, value=1.0),
 
-            html.Br(), html.Br(),
-            html.Button("Confirm & Start Recording", id="rt-confirm", n_clicks=0,
-                        style={"background": "#dc3545", "color": "white", "padding": "8px 25px", "border": "none"})
+            html.Hr(),
+            html.H4("Boards"),
+            _board_row("B1", "Arduino"),
+            _board_row("B2", "Arduino"),
+            _board_row("LB1", "Libelium"),
+            _board_row("LB2", "Libelium"),
+
+            html.Br(),
+            html.Button("Preview Live Data (B1/B2)", id="rt-preview", n_clicks=0,
+                        style={"background": "#0d6efd", "color": "white", "padding": "8px 22px", "border": "none"}),
+            html.Button("Start Capture", id="rt-start", n_clicks=0,
+                        style={"background": "#28a745", "color": "white", "padding": "8px 22px",
+                               "border": "none", "marginLeft": "10px"}),
+            html.Button("Stop", id="rt-stop", n_clicks=0,
+                        style={"background": "#dc3545", "color": "white", "padding": "8px 22px",
+                               "border": "none", "marginLeft": "10px"}),
+
+            html.Div(id="rt-status", style={"marginTop": "15px", "fontWeight": "bold"}),
+
+            html.Div([
+                html.Div(id="rt-progress-fill",
+                         style={"height": "22px", "width": "0%", "background": "#28a745",
+                                "color": "white", "textAlign": "center", "fontSize": "12px"})
+            ], id="rt-progress-container",
+               style={"width": "100%", "background": "#e9ecef", "marginTop": "10px", "display": "none"}),
+
+            html.Div(id="rt-board-status",
+                     style={"marginTop": "10px", "fontFamily": "monospace", "whiteSpace": "pre-wrap"})
+        ], style={"maxWidth": "560px", "margin": "auto"}),
+
+        html.Hr(),
+        html.H4("Realtime B1 / B2"),
+        html.Div(id="rt-graphs", style={"marginTop": "10px"}),
+
+        dcc.Interval(id="rt-tick", interval=750, n_intervals=0),
+        dcc.Interval(id="rt-plot-tick", interval=2000, n_intervals=0),
+        dcc.Store(id="rt-session"),
+        dcc.Store(id="rt-preview-running")
+    ])
+
+#Callbacks
+def register_callbacks(app):
+
+    @app.callback(
+        Output("rt-substance-wrap", "children"),
+        Input("rt-stage", "value")
+    )
+    def _substance_field(stage):
+        if stage == "Baseline":
+            return html.Div()
+        return html.Div([
+            html.Label("Substance"),
+            dcc.Input(id="rt-substance", type="text", placeholder="e.g. Ethanol"),
+            html.Br(), html.Br()
         ])
 
     @app.callback(
+        Output("rt-status", "children"),
+        Output("rt-preview-running", "data"),
+        Input("rt-preview", "n_clicks"),
+        State("rt-stage", "value"),
+        State("rt-substance", "value"),
+        State({"type": "rt-enable", "index": ALL}, "value"),
+        State({"type": "rt-enable", "index": ALL}, "id"),
+        State({"type": "rt-com", "index": ALL}, "value"),
+        State({"type": "rt-com", "index": ALL}, "id"),
+        prevent_initial_call=True
+    )
+    def _preview(_n, stage, substance, enabled_vals, enabled_ids, com_vals, com_ids):
+        enabled_map = {e["index"]: ("on" in v) for v, e in zip(enabled_vals, enabled_ids)}
+        com_map = {e["index"]: (f"COM{int(v)}" if v else None) for v, e in zip(com_vals, com_ids)}
+
+        preview_ports = {b: com_map.get(b) for b in ("B1", "B2")
+                         if enabled_map.get(b) and com_map.get(b)}
+        if not preview_ports:
+            return "To preview graphs, enable B1/B2 and set their COM ports.", {}
+
+        for bid, port in preview_ports.items():
+            if bid not in _PREVIEW_THREADS:
+                stop_evt = threading.Event()
+                t = threading.Thread(target=_b_preview_reader, args=(bid, port, stop_evt), daemon=True)
+                _PREVIEW_THREADS[bid] = (t, stop_evt)
+                t.start()
+
+        sub = "baseline" if stage == "Baseline" else (substance or "").title()
+        return f"Preview running for {', '.join(preview_ports.keys())} — Stage: {stage}, Substance: {sub}", {
+            "previewing": list(preview_ports.keys())
+        }
+
+    def _stop_preview_for(b_boards: List[str]):
+        for bid in b_boards:
+            tup = _PREVIEW_THREADS.get(bid)
+            if not tup:
+                continue
+            t, stop_evt = tup
+            try:
+                stop_evt.set()
+                t.join(timeout=2.0)
+            except Exception:
+                pass
+            _PREVIEW_THREADS.pop(bid, None)
+
+    @app.callback(
         Output("rt-status", "children", allow_duplicate=True),
-        Input("rt-confirm", "n_clicks"),
+        Output("rt-progress-container", "style"),
+        Output("rt-session", "data"),
+        Input("rt-start", "n_clicks"),
         State("rt-stage", "value"),
         State("rt-substance", "value"),
         State("rt-flow", "value"),
         State("rt-duration", "value"),
-        State("rt-interval-sec", "value"),
+        State("rt-interval", "value"),
+        State({"type": "rt-enable", "index": ALL}, "value"),
+        State({"type": "rt-enable", "index": ALL}, "id"),
+        State({"type": "rt-com", "index": ALL}, "value"),
+        State({"type": "rt-com", "index": ALL}, "id"),
+        State("rt-preview-running", "data"),
         prevent_initial_call=True
     )
-    def confirm_recording(_n, stage, substance, flow, dur, inter):
-        if not all([stage, substance, flow, dur, inter]):
-            return "Please complete all fields."
+    def _start_capture(_n, stage, substance, flow, dur_min, inter_s,
+                       enabled_vals, enabled_ids, com_vals, com_ids, preview_running):
+        b_write.stop_capture()
+        lb_write.stop_capture()
 
-        folder, csv_file, _ = get_file_paths(stage, substance.title())
-        RECORDING_PARAMS.update({
-            "recording": True,
-            "stage": stage,
-            "substance": substance.title(),
-            "flow": float(flow),
-            "duration": float(dur),
-            "interval": float(inter),
-            "start_time": None,
-            "csv_file": csv_file,
-            "folder": folder
-        })
-        return f"Recording started: {stage} - {substance.title()}, Flow: {flow} L/min"
+        if not all([stage, flow, dur_min, inter_s]):
+            return "Please complete stage, flow-rate, duration and interval.", {"display": "none"}, None
+        if stage != "Baseline" and not (substance and substance.strip()):
+            return "Substance is required for non-Baseline stages.", {"display": "none"}, None
+
+        enabled_map = {e["index"]: ("on" in v) for v, e in zip(enabled_vals, enabled_ids)}
+        com_map = {e["index"]: (f"COM{int(v)}" if v else None) for v, e in zip(com_vals, com_ids)}
+
+        ports_b = {b: (com_map.get(b) if enabled_map.get(b) else None) for b in ("B1", "B2")}
+        ports_lb = {b: (com_map.get(b) if enabled_map.get(b) else None) for b in ("LB1", "LB2")}
+
+        if not any(ports_b.values()) and not any(ports_lb.values()):
+            return "Please enable at least one board and provide its COM port.", {"display": "none"}, None
+
+        to_stop = [k for k, v in ports_b.items() if v]
+        _stop_preview_for(to_stop)
+
+        duration_sec = int(float(dur_min) * 60)
+        flow = float(flow); inter = float(inter_s)
+        sub_norm = None if stage == "Baseline" else (substance or "").title()
+        test_id = _make_test_id(stage, sub_norm or "baseline")
+
+        fb_status = _prime_firebase()
+        fb_line = f"Firebase: {fb_status}"
+
+        if any(ports_b.values()):
+            b_write.start_capture(stage=stage, substance=sub_norm, test_id=test_id,
+                                  flowrate=flow, duration_sec=duration_sec,
+                                  interval=inter, ports=ports_b)
+        if any(ports_lb.values()):
+            lb_write.start_capture(stage=stage, substance=sub_norm, test_id=test_id,
+                                   flowrate=flow, interval=inter, ports=ports_lb,
+                                   duration_sec=duration_sec)
+
+        extra = " (LB may take ~2–3 min to warm up)" if any(ports_lb.values()) else ""
+        status = f"{fb_line}\nCapture started. test_id: {test_id}. " \
+                 f"B: {', '.join([k for k,v in ports_b.items() if v]) or '-'}; " \
+                 f"LB: {', '.join([k for k,v in ports_lb.items() if v]) or '-'}{extra}"
+
+        return status, {"width": "100%", "background": "#e9ecef", "marginTop": "10px"}, {
+            "running": True,
+            "test_id": test_id
+        }
+
+    @app.callback(
+        Output("rt-status", "children", allow_duplicate=True),
+        Input("rt-stop", "n_clicks"),
+        prevent_initial_call=True
+    )
+    def _stop(_n):
+        b_write.stop_capture()
+        lb_write.stop_capture()
+        for bid in list(_PREVIEW_THREADS.keys()):
+            t, ev = _PREVIEW_THREADS.pop(bid)
+            try:
+                ev.set(); t.join(timeout=2.0)
+            except Exception:
+                pass
+        return "Stopped capture for B and LB."
+
+    @app.callback(
+        Output("rt-progress-fill", "style"),
+        Output("rt-board-status", "children"),
+        Input("rt-tick", "n_intervals"),
+        State("rt-session", "data"),
+        prevent_initial_call=True
+    )
+    def _tick(_n, sess):
+        if not sess or not sess.get("running"):
+            return {"display": "none"}, ""
+
+        b_snap = b_write.snapshot()
+        lb_snap = lb_write.snapshot()
+
+        pct = b_snap.get("pct", 0) or 0
+        style = {
+            "height": "22px",
+            "width": f"{pct}%",
+            "background": "#28a745",
+            "color": "white",
+            "textAlign": "center",
+            "fontSize": "12px",
+            "display": "block"
+        }
+        if b_snap.get("first_read_epoch") is None:
+            style["width"] = "0%"
+        lines: List[str] = []
+   
+        fb = _prime_firebase()
+        if fb:
+            lines.append(f"Firebase: {fb}")
+
+        if b_snap.get("first_read_epoch") is None:
+            lines.append("B-family: waiting for first reading...")
+        for ln in (b_snap.get("status_lines", []) + lb_snap.get("status_lines", [])):
+            if ln and ln not in lines:
+                lines.append(ln)
+
+        return style, "\n".join(lines)
 
     @app.callback(
         Output("rt-graphs", "children"),
-        Input("rt-interval", "n_intervals"),
-        State("rt-active-boards", "data"),
+        Input("rt-plot-tick", "n_intervals"),
         prevent_initial_call=True
     )
-    def update_graphs(_n, boards):
-        if not boards:
-            return []
+    def _update_graphs(_n):
         graphs = []
 
-        for board in boards:
-            if board not in LIVE_DATA or not LIVE_DATA[board]:
+        for b in ("B1", "B2"):
+            if not _LIVE_DATA.get(b):
                 continue
-            df = pd.DataFrame(LIVE_DATA[board])
-            if "Timestamp" not in df:
+            df = pd.DataFrame(_LIVE_DATA[b])
+            if df.empty or "Timestamp" not in df.columns:
                 continue
 
             df["Timestamp"] = pd.to_datetime(df["Timestamp"])
             df = df.sort_values("Timestamp")
-
-            one_min_ago = datetime.now() - timedelta(seconds=60)
-            df = df[df["Timestamp"] >= one_min_ago]
-            if df.empty:
-                continue
+            t0 = df["Timestamp"].min()
 
             for col in df.columns:
                 if col == "Timestamp":
                     continue
-                if not ("ppm" in col.lower() or "ppb" in col.lower() or "(raw)" in col.lower()):
+                if not any(tok in col.lower() for tok in ["ppm", "ppb", "(raw)", "- v"]):
                     continue
 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
-                    x=(df["Timestamp"] - df["Timestamp"].min()).dt.total_seconds(),
+                    x=(df["Timestamp"] - t0).dt.total_seconds(),
                     y=df[col], mode="lines+markers", name="Live"
                 ))
-
-
-                if col in BASELINE_VALUES:
-                    fig.add_trace(go.Scatter(
-                        x=[0, 60], y=[BASELINE_VALUES[col], BASELINE_VALUES[col]],
-                        mode="lines", line=dict(dash="dash"), name="Baseline"
-                    ))
-
-                fig.update_xaxes(range=[0, 60], tickvals=[0, 15, 30, 45, 60])
                 if col.endswith("(raw)"):
                     fig.update_yaxes(range=[0, 1023])
-
+                if col.lower().endswith("- v"):
+                    fig.update_yaxes(range=[0, 5])
                 fig.update_layout(
                     title=col,
-                    xaxis_title="Time (s, last 60s)",
-                    yaxis_title="Value"
+                    xaxis_title="Elapsed time (s) — full session",
+                    yaxis_title="Value",
+                    margin=dict(l=40, r=10, t=50, b=40),
+                    height=350
                 )
                 graphs.append(html.Div([dcc.Graph(figure=fig)],
                                        style={"width": "48%", "display": "inline-block", "margin": "1%"}))
-
         return graphs

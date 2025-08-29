@@ -8,7 +8,7 @@
 *.txt
 __pycache__
 test.py
-.idea
-serviceAccountKey.json
+*.idea
+*.json
 .env
 encoded.txt
