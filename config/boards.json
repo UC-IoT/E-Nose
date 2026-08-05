@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "boards": {
+    "B1": {
+      "name": "Seeduino Cortex Board 1",
+      "enabled": true,
+      "transport": "serial",
+      "baud": 9600,
+      "parser": "framed_key_value",
+      "firebase_id": "B1",
+      "notes": "Existing Arduino board; legacy framed text protocol."
+    },
+    "B2": {
+      "name": "Seeduino Cortex Board 2",
+      "enabled": true,
+      "transport": "serial",
+      "baud": 9600,
+      "parser": "framed_key_value",
+      "firebase_id": "B2",
+      "notes": "Existing Arduino board; legacy framed text protocol."
+    },
+    "B3": {
+      "name": "Seeeduino Crypto Board",
+      "enabled": true,
+      "transport": "serial",
+      "baud": 9600,
+      "parser": "board3_auto",
+      "firebase_id": "B3",
+      "notes": "Automatically accepts the currently flashed sectioned report and the proposed JSON-line firmware."
+    },
+    "LB1": {
+      "name": "Libelium Board 1",
+      "enabled": true,
+      "transport": "serial",
+      "baud": 115200,
+      "parser": "libelium",
+      "firebase_id": "L1",
+      "notes": "Existing Libelium framed text protocol."
+    },
+    "LB2": {
+      "name": "Libelium Board 2",
+      "enabled": true,
+      "transport": "serial",
+      "baud": 115200,
+      "parser": "libelium",
+      "firebase_id": "L2",
+      "notes": "Existing Libelium framed text protocol."
+    }
+  }
+}
