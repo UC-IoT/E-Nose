@@ -1,0 +1,4 @@
+{
+  "database_url": "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com/",
+  "firebase_console_url": "https://console.firebase.google.com/project/YOUR_PROJECT_ID/database/YOUR_PROJECT_ID-default-rtdb/data/"
+}
