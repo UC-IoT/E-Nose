@@ -36,6 +36,8 @@ The dashboard opens at [http://127.0.0.1:8051](http://127.0.0.1:8051). Use `pyth
 
 The repository deliberately does not contain a live Firebase project URL, database secret or service-account key. Each installation must supply its own configuration.
 
+For complete instructions for a new computer, see [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
+
 ### Recommended local configuration
 
 1. Copy `config/settings.example.json` to `config/settings.json`.
